@@ -376,6 +376,28 @@ append_managed_block() {
   } >> "$file"
 }
 
+verify_screenlayout_config_applied() {
+  local has_multi="$1"
+
+  if [[ "$has_multi" != "1" ]]; then
+    return 0
+  fi
+
+  local expected_line="exec --no-startup-id ${SCREENLAYOUT_FILE}"
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    dry "Se verificaria configuracion de screenlayout en: $I3_CONFIG"
+    return 0
+  fi
+
+  if grep -Fq "$expected_line" "$I3_CONFIG"; then
+    log "Screenlayout configurado en i3 config: $SCREENLAYOUT_FILE"
+  else
+    err "No se aplico la configuracion de screenlayout en: $I3_CONFIG"
+    warn "Verifica permisos o contenido del bloque gestionado e intenta nuevamente."
+  fi
+}
+
 update_picom_corner_radius() {
   local candidate=""
   local path
@@ -508,6 +530,10 @@ create_multimonitor_layout_if_needed() {
   fi
 
   local monitor_specs=()
+  local primary_mon=""
+  local primary_mode=""
+  local primary_width=0
+  local primary_area=0
   local mon
 
   for mon in "${connected[@]}"; do
@@ -523,26 +549,53 @@ create_multimonitor_layout_if_needed() {
     fi
 
     local width
+    local height
+    local area
+
     width="${mode%x*}"
+    height="${mode#*x}"
+
+    if [[ "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ ]]; then
+      area=$((width * height))
+    else
+      width=1920
+      height=1080
+      area=$((width * height))
+    fi
 
     monitor_specs+=("${width}|${mon}|${mode}")
+
+    if (( area > primary_area )); then
+      primary_area=$area
+      primary_mon="$mon"
+      primary_mode="$mode"
+      primary_width=$width
+    fi
   done
 
   local cmd_lines=()
   local x_pos=0
-  local primary_set=0
-  local spec
+  local ordered_specs=()
+
+  # Ordena de izquierda a derecha por ancho, dejando la pantalla principal
+  # (mayor resolucion) al final para que quede a la derecha.
+  while IFS='|' read -r width mon mode; do
+    if [[ "$mon" != "$primary_mon" ]]; then
+      ordered_specs+=("${width}|${mon}|${mode}")
+    fi
+  done < <(printf '%s\n' "${monitor_specs[@]}" | sort -s -n -t '|' -k1,1)
+
+  ordered_specs+=("${primary_width}|${primary_mon}|${primary_mode}")
 
   while IFS='|' read -r width mon mode; do
-    if [[ $primary_set -eq 0 ]]; then
+    if [[ "$mon" == "$primary_mon" ]]; then
       cmd_lines+=("       --output ${mon} --primary --mode ${mode} --pos ${x_pos}x0 --rotate normal \\")
-      primary_set=1
     else
       cmd_lines+=("       --output ${mon} --mode ${mode} --pos ${x_pos}x0 --rotate normal \\")
     fi
 
     x_pos=$((x_pos + width))
-  done < <(printf '%s\n' "${monitor_specs[@]}" | sort -s -n -t '|' -k1,1)
+  done < <(printf '%s\n' "${ordered_specs[@]}")
 
   if ((${#cmd_lines[@]} > 0)); then
     local last_index
@@ -810,12 +863,20 @@ main() {
 
   local multi_line=""
   if [[ "$has_multi" == "1" ]]; then
-    multi_line="# Configuracion de monitor doble\nexec --no-startup-id sleep 2 && ${SCREENLAYOUT_FILE}"
+    multi_line="$(cat <<EOF
+# Configuracion de monitor doble
+exec --no-startup-id ${SCREENLAYOUT_FILE}
+EOF
+)"
   fi
 
   local gap_lines=""
   if [[ "$I3_GAP_SIZE" =~ ^[0-9]+$ ]] && (( I3_GAP_SIZE > 0 )); then
-    gap_lines="# Gap entre ventanas\ngaps inner ${I3_GAP_SIZE}"
+    gap_lines=$(cat <<EOF
+# Gap entre ventanas
+gaps inner ${I3_GAP_SIZE}
+EOF
+)
   fi
 
   local managed_block
@@ -847,6 +908,8 @@ EOF
 )"
 
   append_managed_block "$I3_CONFIG" "$managed_block"
+
+  verify_screenlayout_config_applied "$has_multi"
 
   update_i3_autostart_if_exists
 
