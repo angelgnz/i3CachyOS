@@ -10,6 +10,7 @@ I3_SCRIPTS_DIR="${I3_DIR}/scripts"
 I3_AUTOSTART="${I3_SCRIPTS_DIR}/i3_autostart"
 SCREENLAYOUT_DIR="$HOME/.screenlayout"
 SCREENLAYOUT_FILE="${SCREENLAYOUT_DIR}/my-layout.sh"
+I3_GAP_SIZE="${I3_GAP_SIZE:-12}"
 BACKUP_ROOT="${I3_DIR}/.cachyos-i3-backups"
 LATEST_MANIFEST_LINK="${BACKUP_ROOT}/latest.manifest"
 
@@ -506,9 +507,7 @@ create_multimonitor_layout_if_needed() {
     record_new_file "$SCREENLAYOUT_FILE"
   fi
 
-  local primary="${connected[0]}"
-  local cmd_lines=()
-  local x_pos=0
+  local monitor_specs=()
   local mon
 
   for mon in "${connected[@]}"; do
@@ -526,14 +525,24 @@ create_multimonitor_layout_if_needed() {
     local width
     width="${mode%x*}"
 
-    if [[ "$mon" == "$primary" ]]; then
+    monitor_specs+=("${width}|${mon}|${mode}")
+  done
+
+  local cmd_lines=()
+  local x_pos=0
+  local primary_set=0
+  local spec
+
+  while IFS='|' read -r width mon mode; do
+    if [[ $primary_set -eq 0 ]]; then
       cmd_lines+=("       --output ${mon} --primary --mode ${mode} --pos ${x_pos}x0 --rotate normal \\")
+      primary_set=1
     else
       cmd_lines+=("       --output ${mon} --mode ${mode} --pos ${x_pos}x0 --rotate normal \\")
     fi
 
     x_pos=$((x_pos + width))
-  done
+  done < <(printf '%s\n' "${monitor_specs[@]}" | sort -s -n -t '|' -k1,1)
 
   if ((${#cmd_lines[@]} > 0)); then
     local last_index
@@ -804,9 +813,15 @@ main() {
     multi_line="# Configuracion de monitor doble\nexec --no-startup-id sleep 2 && ${SCREENLAYOUT_FILE}"
   fi
 
+  local gap_lines=""
+  if [[ "$I3_GAP_SIZE" =~ ^[0-9]+$ ]] && (( I3_GAP_SIZE > 0 )); then
+    gap_lines="# Gap entre ventanas\ngaps inner ${I3_GAP_SIZE}"
+  fi
+
   local managed_block
   managed_block="$(cat <<EOF
 # Configuracion de i3-layouts
+${gap_lines}
 exec xborders --border-width 2 --border-radius 12 --smart-hide-border
 exec i3-layouts
 
