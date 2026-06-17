@@ -753,7 +753,7 @@ ensure_helper_scripts() {
   fi
 
   local helper
-  for helper in i3_nzxt i3_cloud_storage i3_rofi_apps i3_polybar_set_theme i3_rofi_powermenu; do
+  for helper in i3_nzxt i3_cloud_storage i3_rofi_apps i3_polybar_set_theme i3_rofi_powermenu i3_rofi_polybar_theme; do
     local src="${SCRIPT_DIR}/apps/${helper}"
     local dst="${I3_SCRIPTS_DIR}/${helper}"
 
@@ -990,6 +990,21 @@ main() {
       dry "Se agregaria powermenu en \$mod+x dentro de $I3_CONFIG"
     else
       printf '\n%s\n' 'bindsym $mod+x exec "~/.config/i3/scripts/i3_rofi_powermenu"' >> "$I3_CONFIG"
+    fi
+  fi
+
+  # Reemplaza o agrega selector de tema polybar en $mod+Shift+t.
+  if grep -Eq '^bindsym \$mod\+Shift\+t[[:space:]]+exec .*' "$I3_CONFIG"; then
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se actualizaria selector de tema polybar en \$mod+Shift+t dentro de $I3_CONFIG"
+    else
+      sed -E -i 's|^bindsym \$mod\+Shift\+t[[:space:]]+exec .*$|bindsym $mod+Shift+t exec "~/.config/i3/scripts/i3_rofi_polybar_theme"|' "$I3_CONFIG"
+    fi
+  else
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se agregaria selector de tema polybar en \$mod+Shift+t dentro de $I3_CONFIG"
+    else
+      printf '\n%s\n' 'bindsym $mod+Shift+t exec "~/.config/i3/scripts/i3_rofi_polybar_theme"' >> "$I3_CONFIG"
     fi
   fi
 

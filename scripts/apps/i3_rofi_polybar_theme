@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+THEME_HELPER=""
+for candidate in \
+  "$HOME/.config/i3/scripts/i3_polybar_set_theme" \
+  "$SCRIPT_DIR/i3_polybar_set_theme"; do
+  if [[ -x "$candidate" || -f "$candidate" ]]; then
+    THEME_HELPER="$candidate"
+    break
+  fi
+done
+
+if ! command -v rofi >/dev/null 2>&1; then
+  echo "[ERROR] rofi no esta instalado." >&2
+  exit 1
+fi
+
+if [[ -z "$THEME_HELPER" ]]; then
+  echo "[ERROR] No se encontro i3_polybar_set_theme." >&2
+  exit 1
+fi
+
+theme="$(printf '%s\n' \
+  blocks \
+  colorblocks \
+  cuts \
+  docky \
+  forest \
+  grayblocks \
+  hack \
+  material \
+  panels \
+  pwidgets \
+  shades \
+  shapes \
+  | rofi -dmenu -i -p 'Polybar theme')"
+
+if [[ -z "$theme" ]]; then
+  exit 0
+fi
+
+if [[ "$theme" == "panels" ]]; then
+  variant="$(printf '%s\n' \
+    --budgie \
+    --deepin \
+    --elight \
+    --edark \
+    --gnome \
+    --klight \
+    --kdark \
+    --liri \
+    --mint \
+    --ugnome \
+    --unity \
+    --xubuntu \
+    --zorin \
+    | rofi -dmenu -i -p 'Panels variant')"
+
+  if [[ -z "$variant" ]]; then
+    exit 0
+  fi
+
+  exec bash "$THEME_HELPER" panels "$variant"
+fi
+
+exec bash "$THEME_HELPER" "$theme"
