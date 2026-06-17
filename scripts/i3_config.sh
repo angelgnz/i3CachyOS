@@ -263,6 +263,7 @@ install_missing_dependencies() {
       i3-layouts) packages+=(i3-layouts) ;;
       setwallpaper) packages+=(setwallpaper) ;;
       nextcloud) packages+=(nextcloud-client) ;;
+      kwallet-pam) packages+=(kwallet-pam) ;;
       python) packages+=(python) ;;
       *) packages+=("$cmd") ;;
     esac
@@ -755,7 +756,7 @@ main() {
   fi
 
   local required_cmds=(sed awk grep cp chmod mkdir)
-  local optional_cmds=(rofi picom xrandr xborders i3-layouts setwallpaper python nextcloud)
+  local optional_cmds=(rofi picom xrandr xborders i3-layouts setwallpaper python nextcloud kwallet-pam)
   local missing=()
 
   local c
@@ -898,6 +899,7 @@ set \$i3l spiral to workspace 9
 set \$i3l spiral to workspace 0
 
 # Scripts auxiliares
+exec --no-startup-id kwalletd6
 exec --no-startup-id ${I3_SCRIPTS_DIR}/i3_nzxt
 exec --no-startup-id ${I3_SCRIPTS_DIR}/i3_cloud_storage
 
