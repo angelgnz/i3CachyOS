@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+POLYBAR_DIR="${HOME}/.config/polybar"
+LAUNCH_SCRIPT="${POLYBAR_DIR}/launch.sh"
+CURRENT_THEME_FILE="${POLYBAR_DIR}/.current_theme"
+CURRENT_PANEL_FILE="${POLYBAR_DIR}/.current_panel_variant"
+
+usage() {
+  cat <<'EOF'
+Uso:
+  i3_polybar_set_theme <tema> [panel_variant]
+
+Ejemplos:
+  i3_polybar_set_theme cuts
+  i3_polybar_set_theme hack
+  i3_polybar_set_theme panels --gnome
+
+Temas soportados:
+  blocks colorblocks cuts docky forest grayblocks hack material
+  panels pwidgets shades shapes
+
+Panel variants validos para 'panels':
+  --budgie --deepin --elight --edark --gnome --klight --kdark
+  --liri --mint --ugnome --unity --xubuntu --zorin
+EOF
+}
+
+is_valid_theme() {
+  case "$1" in
+    blocks|colorblocks|cuts|docky|forest|grayblocks|hack|material|panels|pwidgets|shades|shapes)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+is_valid_panel_variant() {
+  case "$1" in
+    --budgie|--deepin|--elight|--edark|--gnome|--klight|--kdark|--liri|--mint|--ugnome|--unity|--xubuntu|--zorin)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" || $# -eq 0 ]]; then
+  usage
+  exit 0
+fi
+
+if [[ ! -d "$POLYBAR_DIR" ]]; then
+  echo "[ERROR] No existe: $POLYBAR_DIR" >&2
+  echo "Instala primero polybar-themes (setup.sh)." >&2
+  exit 1
+fi
+
+if [[ ! -f "$LAUNCH_SCRIPT" ]]; then
+  echo "[ERROR] No existe launch script: $LAUNCH_SCRIPT" >&2
+  echo "Revisa tu instalacion de polybar-themes." >&2
+  exit 1
+fi
+
+theme="$1"
+shift || true
+
+if ! is_valid_theme "$theme"; then
+  echo "[ERROR] Tema no valido: $theme" >&2
+  usage
+  exit 1
+fi
+
+panel_variant=""
+if [[ "$theme" == "panels" ]]; then
+  panel_variant="${1:---gnome}"
+  if ! is_valid_panel_variant "$panel_variant"; then
+    echo "[ERROR] Panel variant no valido: $panel_variant" >&2
+    usage
+    exit 1
+  fi
+fi
+
+printf '%s\n' "$theme" > "$CURRENT_THEME_FILE"
+
+if [[ "$theme" == "panels" ]]; then
+  printf '%s\n' "$panel_variant" > "$CURRENT_PANEL_FILE"
+else
+  rm -f "$CURRENT_PANEL_FILE"
+fi
+
+echo "[INFO] Tema activo: $theme"
+if [[ "$theme" == "panels" ]]; then
+  echo "[INFO] Panel variant activo: $panel_variant"
+fi
+
+exec bash "$LAUNCH_SCRIPT" "--$theme"

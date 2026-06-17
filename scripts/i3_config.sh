@@ -753,7 +753,7 @@ ensure_helper_scripts() {
   fi
 
   local helper
-  for helper in i3_nzxt i3_cloud_storage i3_rofi_apps; do
+  for helper in i3_nzxt i3_cloud_storage i3_rofi_apps i3_polybar_set_theme i3_rofi_powermenu; do
     local src="${SCRIPT_DIR}/apps/${helper}"
     local dst="${I3_SCRIPTS_DIR}/${helper}"
 
@@ -960,6 +960,36 @@ main() {
       dry "Se agregaria launcher rofi en \$mod+a dentro de $I3_CONFIG"
     else
       printf '\n%s\n' 'bindsym $mod+a exec "~/.config/i3/scripts/i3_rofi_apps"' >> "$I3_CONFIG"
+    fi
+  fi
+
+  # Reemplaza o agrega powermenu en $mod+Shift+e.
+  if grep -Eq '^bindsym \$mod\+Shift\+e[[:space:]]+exec .*' "$I3_CONFIG"; then
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se actualizaria powermenu en \$mod+Shift+e dentro de $I3_CONFIG"
+    else
+      sed -E -i 's|^bindsym \$mod\+Shift\+e[[:space:]]+exec .*$|bindsym $mod+Shift+e exec "~/.config/i3/scripts/i3_rofi_powermenu"|' "$I3_CONFIG"
+    fi
+  else
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se agregaria powermenu en \$mod+Shift+e dentro de $I3_CONFIG"
+    else
+      printf '\n%s\n' 'bindsym $mod+Shift+e exec "~/.config/i3/scripts/i3_rofi_powermenu"' >> "$I3_CONFIG"
+    fi
+  fi
+
+  # Reemplaza o agrega powermenu en $mod+x.
+  if grep -Eq '^bindsym \$mod\+x[[:space:]]+exec .*' "$I3_CONFIG"; then
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se actualizaria powermenu en \$mod+x dentro de $I3_CONFIG"
+    else
+      sed -E -i 's|^bindsym \$mod\+x[[:space:]]+exec .*$|bindsym $mod+x exec "~/.config/i3/scripts/i3_rofi_powermenu"|' "$I3_CONFIG"
+    fi
+  else
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se agregaria powermenu en \$mod+x dentro de $I3_CONFIG"
+    else
+      printf '\n%s\n' 'bindsym $mod+x exec "~/.config/i3/scripts/i3_rofi_powermenu"' >> "$I3_CONFIG"
     fi
   fi
 

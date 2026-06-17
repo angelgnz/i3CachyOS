@@ -6,16 +6,13 @@ CURRENT_THEME_FILE="${POLYBAR_DIR}/.current_theme"
 CURRENT_PANEL_FILE="${POLYBAR_DIR}/.current_panel_variant"
 
 fallback() {
-  exec rofi -show drun -modi drun "$@"
+  i3-nagbar -t warning \
+    -m "You pressed the exit shortcut. Do you really want to exit i3? This will end your X session." \
+    -b "Yes, exit i3" "i3-msg exit"
 }
 
-if ! command -v rofi >/dev/null 2>&1; then
-  echo "[ERROR] rofi no esta instalado." >&2
-  exit 1
-fi
-
 if [[ ! -d "$POLYBAR_DIR" ]]; then
-  fallback "$@"
+  fallback
 fi
 
 theme=""
@@ -33,7 +30,7 @@ if [[ -z "$theme" ]]; then
 fi
 
 if [[ -z "$theme" ]]; then
-  fallback "$@"
+  fallback
 fi
 
 if [[ "$theme" == "panels" ]]; then
@@ -49,21 +46,21 @@ if [[ "$theme" == "panels" ]]; then
     fi
   fi
 
-  launcher="${POLYBAR_DIR}/panels/scripts/launcher.sh"
-  if [[ -x "$launcher" ]]; then
-    exec "$launcher" "$panel_variant"
-  elif [[ -f "$launcher" ]]; then
-    exec bash "$launcher" "$panel_variant"
+  powermenu="${POLYBAR_DIR}/panels/scripts/powermenu.sh"
+  if [[ -x "$powermenu" ]]; then
+    exec "$powermenu" "$panel_variant"
+  elif [[ -f "$powermenu" ]]; then
+    exec bash "$powermenu" "$panel_variant"
   else
-    fallback "$@"
+    fallback
   fi
 fi
 
-launcher="${POLYBAR_DIR}/${theme}/scripts/launcher.sh"
-if [[ -x "$launcher" ]]; then
-  exec "$launcher"
-elif [[ -f "$launcher" ]]; then
-  exec bash "$launcher"
+powermenu="${POLYBAR_DIR}/${theme}/scripts/powermenu.sh"
+if [[ -x "$powermenu" ]]; then
+  exec "$powermenu"
+elif [[ -f "$powermenu" ]]; then
+  exec bash "$powermenu"
 else
-  fallback "$@"
+  fallback
 fi
