@@ -7,6 +7,7 @@ Script de personalizacion de i3wm en CachyOS, migrado a un solo archivo principa
 - `scripts/i3_config.sh`: script principal.
 - `scripts/apps/i3_nzxt`: helper para iniciar NZXT si existe.
 - `scripts/apps/i3_cloud_storage`: helper para iniciar Overgrive/Nextcloud.
+- `scripts/apps/i3_rofi_apps`: helper para abrir Rofi solo con aplicaciones (`drun`).
 - `wallpapers/`: wallpapers fuente del repositorio (se copian todos).
 
 ## Que hace
@@ -43,8 +44,14 @@ Para revertir el ultimo cambio aplicado:
 ## Uso
 
 ```bash
-chmod +x scripts/i3_config.sh scripts/apps/i3_nzxt scripts/apps/i3_cloud_storage
+chmod +x scripts/i3_config.sh scripts/apps/i3_nzxt scripts/apps/i3_cloud_storage scripts/apps/i3_rofi_apps
 ./scripts/i3_config.sh
+```
+
+Para usar launcher de solo aplicaciones en i3 (atajo `$mod+a`):
+
+```i3
+bindsym $mod+a exec "~/.config/i3/scripts/i3_rofi_apps"
 ```
 
 Opciones:

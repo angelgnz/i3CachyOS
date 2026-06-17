@@ -753,7 +753,7 @@ ensure_helper_scripts() {
   fi
 
   local helper
-  for helper in i3_nzxt i3_cloud_storage; do
+  for helper in i3_nzxt i3_cloud_storage i3_rofi_apps; do
     local src="${SCRIPT_DIR}/apps/${helper}"
     local dst="${I3_SCRIPTS_DIR}/${helper}"
 
@@ -878,7 +878,7 @@ main() {
   fi
 
   local required_cmds=(sed awk grep cp chmod mkdir)
-  local optional_cmds=(rofi picom xrandr xborders i3-layouts setwallpaper python nextcloud kwallet-pam)
+  local optional_cmds=(rofi picom xrandr xborders i3-layouts setwallpaper python nextcloud kwallet-pam polybar-themes-git mpd)
   local missing=()
 
   local c
@@ -953,13 +953,13 @@ main() {
     if [[ $DRY_RUN -eq 1 ]]; then
       dry "Se actualizaria launcher rofi en \$mod+a dentro de $I3_CONFIG"
     else
-      sed -E -i 's|^bindsym \$mod\+a[[:space:]]+exec .*$|bindsym $mod+a exec "rofi -show combi -modi window,run,combi -combi-modi window,run"|' "$I3_CONFIG"
+      sed -E -i 's|^bindsym \$mod\+a[[:space:]]+exec .*$|bindsym $mod+a exec "~/.config/i3/scripts/i3_rofi_apps"|' "$I3_CONFIG"
     fi
   else
     if [[ $DRY_RUN -eq 1 ]]; then
       dry "Se agregaria launcher rofi en \$mod+a dentro de $I3_CONFIG"
     else
-      printf '\n%s\n' 'bindsym $mod+a exec "rofi -show combi -modi window,run,combi -combi-modi window,run"' >> "$I3_CONFIG"
+      printf '\n%s\n' 'bindsym $mod+a exec "~/.config/i3/scripts/i3_rofi_apps"' >> "$I3_CONFIG"
     fi
   fi
 
