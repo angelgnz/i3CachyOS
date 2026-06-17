@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v liquidctl >/dev/null 2>&1; then
+    liquidctl --match smart set sync color fixed 7400b8 || true
+    liquidctl --match kraken set sync color fixed 7400b8 || true
+    liquidctl --match kraken set pump speed 100 || true
+    liquidctl --match smart set fan1 speed 60 || true
+    liquidctl --match smart set fan2 speed 60 || true
+    liquidctl --match smart set fan3 speed 60 || true
+fi
+
+if command -v xinput >/dev/null 2>&1; then
+    if xinput list --name-only | grep -Fxq "MSFT0001:00 06CB:CE44 Touchpad"; then
+        xinput set-prop "MSFT0001:00 06CB:CE44 Touchpad" "libinput Natural Scrolling Enabled" 1 || true
+    fi
+fi
+
+exit 0

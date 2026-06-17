@@ -1,0 +1,59 @@
+# i3CachyOS
+
+Script de personalizacion de i3wm en CachyOS, migrado a un solo archivo principal.
+
+## Estructura
+
+- `scripts/i3_config.sh`: script principal.
+- `scripts/apps/i3_nzxt`: helper para iniciar NZXT si existe.
+- `scripts/apps/i3_cloud_storage`: helper para iniciar Overgrive/Nextcloud.
+- `wallpapers/`: wallpapers fuente del repositorio (se copian todos).
+
+## Que hace
+
+- Detecta dependencias usadas por el flujo (`rofi`, `picom`, `xrandr`, `xborders`, `i3-layouts`, `setwallpaper`).
+- Si faltan, permite elegir:
+  - instalar,
+  - continuar sin instalar,
+  - detener el script.
+- Copia los helpers al destino de i3:
+  - `~/.config/i3/scripts/i3_nzxt`
+  - `~/.config/i3/scripts/i3_cloud_storage`
+- Copia todos los wallpapers de `wallpapers/` a:
+  - `~/Images/wallpapers` o `~/Imágenes/wallpapers`.
+- Detecta multimonitor automaticamente con `xrandr` y crea `~/.screenlayout/my-layout.sh` cuando hay 2+ pantallas.
+- Aplica cambios idempotentes en `~/.config/i3/config` usando un bloque gestionado.
+- Intenta ajustar `corner-radius = 12` en `picom.conf` dentro del bloque `#-cr-start` / `#-cr-end`.
+- Inserta autostart de helpers en `~/.config/i3/scripts/i3_autostart` si el archivo existe.
+
+## Reversibilidad
+
+Antes de modificar, guarda backups en:
+
+- `~/.config/i3/.cachyos-i3-backups/<timestamp>/`
+
+Se crea un manifiesto con archivos restaurables y archivos nuevos creados.
+
+Para revertir el ultimo cambio aplicado:
+
+```bash
+./scripts/i3_config.sh --revert
+```
+
+## Uso
+
+```bash
+chmod +x scripts/i3_config.sh scripts/apps/i3_nzxt scripts/apps/i3_cloud_storage
+./scripts/i3_config.sh
+```
+
+Opciones:
+
+- `--skip-install`: no intenta instalar faltantes.
+- `--yes`: no interactivo, continua sin instalar faltantes.
+- `--dry-run`: simula cambios sin tocar archivos ni instalar paquetes.
+- `--revert`: restaura el ultimo backup.
+
+## Nota
+
+El script esta pensado para ser idempotente: volver a ejecutarlo no duplica el bloque gestionado en `i3/config`.

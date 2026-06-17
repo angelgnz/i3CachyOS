@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v python >/dev/null 2>&1 && [[ -f /opt/thefanclub/overgrive/overgrive ]]; then
+    python /opt/thefanclub/overgrive/overgrive || true
+fi
+
+if command -v nextcloud >/dev/null 2>&1; then
+    if ! pgrep -x nextcloud >/dev/null 2>&1; then
+        nextcloud >/dev/null 2>&1 & disown
+    fi
+fi
+
+exit 0
