@@ -444,6 +444,128 @@ update_picom_corner_radius() {
   rm -f "$tmp"
 }
 
+update_picom_blur_exclude() {
+  local candidate=""
+  local path
+  for path in "$I3_DIR/picom.conf" "$HOME/.config/picom/picom.conf"; do
+    if [[ -f "$path" ]]; then
+      candidate="$path"
+      break
+    fi
+  done
+
+  if [[ -z "$candidate" ]]; then
+    warn "No se encontro picom.conf. Se omite blur-background-exclude."
+    return 0
+  fi
+
+  local entries=(
+    "role = 'xborder'"
+    "class_g = 'xborder'"
+    "name = 'xborder'"
+  )
+
+  # Verificar si ya existen todas las entradas
+  local all_present=1
+  local entry
+  for entry in "${entries[@]}"; do
+    if ! grep -Fq "$entry" "$candidate"; then
+      all_present=0
+      break
+    fi
+  done
+
+  if [[ $all_present -eq 1 ]]; then
+    log "blur-background-exclude xborder ya configurado en: $candidate"
+    return 0
+  fi
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    dry "Se agregarian entradas xborder a blur-background-exclude en: $candidate"
+    return 0
+  fi
+
+  local tmp
+  tmp="$(mktemp)"
+
+  # Inserta las entradas faltantes dentro del bloque blur-background-exclude = [...]
+  awk -v entries="role = 'xborder'|class_g = 'xborder'|name = 'xborder'" '
+    BEGIN {
+      inblock = 0
+      done = 0
+      n = split(entries, arr, "|")
+    }
+    !done && /blur-background-exclude[[:space:]]*=/ { inblock = 1 }
+    inblock && /\]/ && !done {
+      for (i = 1; i <= n; i++) {
+        found = 0
+        while ((getline line < FILENAME) > 0) { close(FILENAME); break }
+        found = 0
+      }
+      # Agregar entradas que no esten presentes antes del cierre
+      for (i = 1; i <= n; i++) {
+        if (!seen[arr[i]]) {
+          print "  " arr[i] ","
+        }
+      }
+      done = 1
+    }
+    { seen[$0] = 1; print }
+  ' "$candidate" > /dev/null
+
+  # Usar python3 para la manipulacion segura del bloque
+  python3 - "$candidate" "$tmp" <<'PYEOF'
+import sys, re
+
+src = sys.argv[1]
+dst = sys.argv[2]
+
+new_entries = [
+    "  role = 'xborder'",
+    "  class_g = 'xborder'",
+    "  name = 'xborder'",
+]
+
+with open(src, 'r') as f:
+    content = f.read()
+
+# Localizar el bloque blur-background-exclude = [ ... ]
+pattern = re.compile(
+    r'(blur-background-exclude\s*=\s*\[)(.*?)(\])',
+    re.DOTALL
+)
+
+def insert_missing(m):
+    header = m.group(1)
+    body   = m.group(2)
+    footer = m.group(3)
+    for ne in new_entries:
+        key = ne.strip().rstrip(',')
+        if key not in body:
+            # Agregar antes del cierre, con coma si el body ya tiene contenido
+            body = body.rstrip()
+            if body and not body.endswith(','):
+                body += ','
+            body += '\n' + ne + ',\n'
+    return header + body + footer
+
+new_content = pattern.sub(insert_missing, content, count=1)
+
+with open(dst, 'w') as f:
+    f.write(new_content)
+PYEOF
+
+  if ! cmp -s "$candidate" "$tmp"; then
+    backup_file_once "$candidate"
+    cat "$tmp" > "$candidate"
+    log "Agregadas entradas xborder a blur-background-exclude en: $candidate"
+  else
+    log "blur-background-exclude xborder ya estaba presente en: $candidate"
+  fi
+
+  rm -f "$tmp"
+}
+
 detect_wallpaper_dir() {
   local d1="$HOME/Images/wallpapers"
   local d2="$HOME/Imágenes/wallpapers"
@@ -851,6 +973,7 @@ main() {
   fi
 
   update_picom_corner_radius
+  update_picom_blur_exclude
 
   local wallpaper_line="# Configuracion de wallpaper"
   if [[ -n "$wallpaper_dir" ]]; then
@@ -902,6 +1025,7 @@ set \$i3l spiral to workspace 0
 exec --no-startup-id kwalletd6
 exec --no-startup-id ${I3_SCRIPTS_DIR}/i3_nzxt
 exec --no-startup-id ${I3_SCRIPTS_DIR}/i3_cloud_storage
+exec --no-startup-id gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
 
 ${multi_line}
 
