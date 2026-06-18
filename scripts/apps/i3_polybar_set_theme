@@ -5,6 +5,8 @@ POLYBAR_DIR="${HOME}/.config/polybar"
 LAUNCH_SCRIPT="${POLYBAR_DIR}/launch.sh"
 CURRENT_THEME_FILE="${POLYBAR_DIR}/.current_theme"
 CURRENT_PANEL_FILE="${POLYBAR_DIR}/.current_panel_variant"
+WALLPAPER_DIR_DEFAULT="${HOME}/Images/wallpapers"
+WALLPAPER_DIR_ALT="${HOME}/Imágenes/wallpapers"
 
 usage() {
   cat <<'EOF'
@@ -95,6 +97,30 @@ fi
 echo "[INFO] Tema activo: $theme"
 if [[ "$theme" == "panels" ]]; then
   echo "[INFO] Panel variant activo: $panel_variant"
+fi
+
+pywal_input="$WALLPAPER_DIR_DEFAULT"
+if [[ ! -d "$pywal_input" && -d "$WALLPAPER_DIR_ALT" ]]; then
+  pywal_input="$WALLPAPER_DIR_ALT"
+fi
+
+pywal_script="${POLYBAR_DIR}/${theme}/scripts/pywal.sh"
+if [[ -f "$pywal_script" ]]; then
+  if command -v wal >/dev/null 2>&1; then
+    if [[ -d "$pywal_input" || -f "$pywal_input" ]]; then
+      echo "[INFO] Aplicando pywal con: $pywal_input"
+      if ! bash "$pywal_script" "$pywal_input"; then
+        echo "[WARN] Fallo pywal.sh para el tema '$theme'. Continuando con launch.sh." >&2
+      fi
+    else
+      echo "[WARN] No existe ruta de wallpapers para pywal: $pywal_input" >&2
+      echo "[WARN] Se omite pywal y se continua con launch.sh." >&2
+    fi
+  else
+    echo "[WARN] No se encontro el comando 'wal' (pywal). Se omite pywal." >&2
+  fi
+else
+  echo "[WARN] El tema '$theme' no tiene scripts/pywal.sh. Se omite pywal." >&2
 fi
 
 exec bash "$LAUNCH_SCRIPT" "--$theme"
