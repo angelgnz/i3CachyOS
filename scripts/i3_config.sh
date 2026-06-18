@@ -261,33 +261,33 @@ ask_missing_dependency_action() {
 
   printf '\n' >&2
   print_missing_dependencies "${missing[@]}"
-  printf 'Elige una accion para las dependencias faltantes:\n' >&2
+  printf 'Elige una acción para las dependencias faltantes:\n' >&2
   printf '  1) Intentar instalar faltantes\n' >&2
   printf '  2) Continuar sin instalar\n' >&2
   printf '  3) Detener script\n' >&2
 
   if [[ $NON_INTERACTIVE -eq 1 ]]; then
-    warn "Modo --yes: se selecciona automaticamente la opcion 2 (continuar sin instalar)."
+    warn "Modo --yes: se selecciona automáticamente la opción 2 (continuar sin instalar)."
     echo "2"
     return 0
   fi
 
   while true; do
-    printf 'Selecciona una accion [1-3]: ' >&2
+    printf 'Selecciona una acción [1-3]: ' >&2
     read -r choice
     case "$choice" in
       1)
-        warn "Opcion seleccionada: 1) Intentar instalar faltantes."
+        warn "Opción seleccionada: 1) Intentar instalar faltantes."
         echo "$choice"
         return 0
         ;;
       2)
-        warn "Opcion seleccionada: 2) Continuar sin instalar."
+        warn "Opción seleccionada: 2) Continuar sin instalar."
         echo "$choice"
         return 0
         ;;
       3)
-        warn "Opcion seleccionada: 3) Detener script."
+        warn "Opción seleccionada: 3) Detener script."
         echo "$choice"
         return 0
         ;;
@@ -412,12 +412,12 @@ install_missing_dependencies() {
   fi
 
   if ((${#remaining[@]} > 0)); then
-    warn "Despues del intento de instalacion, aun faltan dependencias:"
+    warn "Después del intento de instalación, aún faltan dependencias:"
     print_missing_dependencies "${remaining[@]}"
   fi
 
   if [[ $install_failed -ne 0 ]]; then
-    err "La instalacion automatica no se completo correctamente."
+    err "La instalación automática no se completó correctamente."
   fi
 
   return 1
