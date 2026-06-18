@@ -226,24 +226,68 @@ dependency_available() {
   esac
 }
 
+print_missing_dependencies() {
+  local missing=("$@")
+  local dep
+
+  if ((${#missing[@]} == 0)); then
+    return 0
+  fi
+
+  warn "Dependencias opcionales faltantes (${#missing[@]}):"
+  for dep in "${missing[@]}"; do
+    printf '  - %s\n' "$dep" >&2
+  done
+}
+
+collect_missing_dependencies() {
+  local dep
+  local missing=()
+
+  for dep in "$@"; do
+    if ! dependency_available "$dep"; then
+      missing+=("$dep")
+    fi
+  done
+
+  if ((${#missing[@]} > 0)); then
+    printf '%s\n' "${missing[@]}"
+  fi
+}
+
 ask_missing_dependency_action() {
-  local missing=($@)
-  echo
-  warn "Faltan dependencias: ${missing[*]}"
-  echo "Elige una opcion:"
-  echo "  1) Intentar instalar faltantes"
-  echo "  2) Continuar sin instalar"
-  echo "  3) Detener script"
+  local missing=("$@")
+  local choice=""
+
+  printf '\n' >&2
+  print_missing_dependencies "${missing[@]}"
+  printf 'Elige una acción para las dependencias faltantes:\n' >&2
+  printf '  1) Intentar instalar faltantes\n' >&2
+  printf '  2) Continuar sin instalar\n' >&2
+  printf '  3) Detener script\n' >&2
 
   if [[ $NON_INTERACTIVE -eq 1 ]]; then
+    warn "Modo --yes: se selecciona automáticamente la opción 2 (continuar sin instalar)."
     echo "2"
     return 0
   fi
 
   while true; do
-    read -r -p "Seleccion [1-3]: " choice
+    printf 'Selecciona una acción [1-3]: ' >&2
+    read -r choice
     case "$choice" in
-      1|2|3)
+      1)
+        warn "Opción seleccionada: 1) Intentar instalar faltantes."
+        echo "$choice"
+        return 0
+        ;;
+      2)
+        warn "Opción seleccionada: 2) Continuar sin instalar."
+        echo "$choice"
+        return 0
+        ;;
+      3)
+        warn "Opción seleccionada: 3) Detener script."
         echo "$choice"
         return 0
         ;;
@@ -255,7 +299,9 @@ ask_missing_dependency_action() {
 }
 
 install_missing_dependencies() {
-  local missing=($@)
+  local missing=("$@")
+  local remaining=()
+  local install_failed=0
 
   if ((${#missing[@]} == 0)); then
     return 0
@@ -274,7 +320,7 @@ install_missing_dependencies() {
   fi
 
   if [[ -z "$aur_helper" && $has_pacman -eq 0 ]]; then
-    warn "No se encontro gestor de paquetes compatible (paru/yay/pacman)."
+    err "No se puede instalar automaticamente: no se encontro gestor de paquetes compatible (pacman, yay o paru)."
     return 1
   fi
 
@@ -323,26 +369,58 @@ install_missing_dependencies() {
 
   if [[ $DRY_RUN -eq 1 ]]; then
     dry "Se instalarian paquetes: ${unique_packages[*]}"
+    dry "Modo dry-run: no se realizan instalaciones reales."
     return 0
   fi
 
+  log "Si se solicitan credenciales, responde al prompt en esta misma terminal."
+
   if ((${#official_packages[@]} > 0)); then
     if [[ $has_pacman -eq 1 ]]; then
-      sudo pacman -S --needed --noconfirm "${official_packages[@]}"
+      log "Instalando paquetes oficiales con sudo pacman: ${official_packages[*]}"
+      if ! sudo pacman -S --needed --noconfirm "${official_packages[@]}"; then
+        err "Falló la instalación con sudo pacman."
+        install_failed=1
+      fi
     elif [[ -n "$aur_helper" ]]; then
-      "$aur_helper" -S --needed --noconfirm "${official_packages[@]}"
+      log "Instalando paquetes oficiales con $aur_helper: ${official_packages[*]}"
+      if ! "$aur_helper" -S --needed --noconfirm "${official_packages[@]}"; then
+        err "Falló la instalación con $aur_helper para paquetes oficiales."
+        install_failed=1
+      fi
     fi
   fi
 
   if ((${#aur_packages[@]} > 0)); then
     if [[ -n "$aur_helper" ]]; then
-      "$aur_helper" -S --needed --noconfirm "${aur_packages[@]}"
+      log "Instalando paquetes AUR con $aur_helper: ${aur_packages[*]}"
+      if ! "$aur_helper" -S --needed --noconfirm "${aur_packages[@]}"; then
+        err "Falló la instalación de paquetes AUR con $aur_helper."
+        install_failed=1
+      fi
     else
-      warn "Faltan paquetes AUR (${aur_packages[*]}) y no se encontro yay/paru."
-      warn "Instala yay o paru para poder instalar paquetes AUR automaticamente."
-      return 1
+      err "Faltan paquetes AUR (${aur_packages[*]}) y no se encontro yay/paru para instalarlos automaticamente."
+      install_failed=1
     fi
   fi
+
+  mapfile -t remaining < <(collect_missing_dependencies "${missing[@]}")
+
+  if ((${#remaining[@]} == 0)) && [[ $install_failed -eq 0 ]]; then
+    log "Dependencias instaladas correctamente."
+    return 0
+  fi
+
+  if ((${#remaining[@]} > 0)); then
+    warn "Después del intento de instalación, aún faltan dependencias:"
+    print_missing_dependencies "${remaining[@]}"
+  fi
+
+  if [[ $install_failed -ne 0 ]]; then
+    err "La instalación automática no se completó correctamente."
+  fi
+
+  return 1
 }
 
 safe_write_file() {
@@ -1000,8 +1078,8 @@ main() {
   local required_cmds=(sed awk grep cp chmod mkdir)
   local optional_cmds=(rofi picom xrandr xborders i3-layouts setwallpaper python nextcloud kwallet-pam polybar-themes-git mpd)
   local missing=()
-
   local c
+
   for c in "${required_cmds[@]}"; do
     if ! command_exists "$c"; then
       err "Falta dependencia critica: $c"
@@ -1009,14 +1087,11 @@ main() {
     fi
   done
 
-  for c in "${optional_cmds[@]}"; do
-    if ! dependency_available "$c"; then
-      missing+=("$c")
-    fi
-  done
+  mapfile -t missing < <(collect_missing_dependencies "${optional_cmds[@]}")
 
   if ((${#missing[@]} > 0)); then
     if [[ $SKIP_INSTALL -eq 1 ]]; then
+      print_missing_dependencies "${missing[@]}"
       warn "Se omite instalacion de dependencias por --skip-install"
     else
       local action
