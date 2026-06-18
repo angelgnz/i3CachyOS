@@ -10,6 +10,8 @@ I3_SCRIPTS_DIR="${I3_DIR}/scripts"
 I3_AUTOSTART="${I3_SCRIPTS_DIR}/i3_autostart"
 SCREENLAYOUT_DIR="$HOME/.screenlayout"
 SCREENLAYOUT_FILE="${SCREENLAYOUT_DIR}/my-layout.sh"
+POLYBAR_SHAPES_MODULES_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/polybar/shapes/modules.ini"
+POLYBAR_SHAPES_CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/polybar/shapes/config.ini"
 I3_GAP_SIZE="${I3_GAP_SIZE:-12}"
 BACKUP_ROOT="${I3_DIR}/.cachyos-i3-backups"
 LATEST_MANIFEST_LINK="${BACKUP_ROOT}/latest.manifest"
@@ -203,6 +205,27 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+dependency_available() {
+  local dep="$1"
+
+  case "$dep" in
+    polybar-themes-git)
+      if command_exists pacman; then
+        pacman -Qq "$dep" >/dev/null 2>&1
+      elif command_exists paru; then
+        paru -Qq "$dep" >/dev/null 2>&1
+      elif command_exists yay; then
+        yay -Qq "$dep" >/dev/null 2>&1
+      else
+        return 1
+      fi
+      ;;
+    *)
+      command_exists "$dep"
+      ;;
+  esac
+}
+
 ask_missing_dependency_action() {
   local missing=($@)
   echo
@@ -238,16 +261,19 @@ install_missing_dependencies() {
     return 0
   fi
 
-  local pkg_manager=""
+  local aur_helper=""
   if command_exists paru; then
-    pkg_manager="paru"
+    aur_helper="paru"
   elif command_exists yay; then
-    pkg_manager="yay"
-  elif command_exists pacman; then
-    pkg_manager="pacman"
+    aur_helper="yay"
   fi
 
-  if [[ -z "$pkg_manager" ]]; then
+  local has_pacman=0
+  if command_exists pacman; then
+    has_pacman=1
+  fi
+
+  if [[ -z "$aur_helper" && $has_pacman -eq 0 ]]; then
     warn "No se encontro gestor de paquetes compatible (paru/yay/pacman)."
     return 1
   fi
@@ -279,6 +305,20 @@ install_missing_dependencies() {
     fi
   done
 
+  local aur_packages=()
+  local official_packages=()
+
+  for pkg in "${unique_packages[@]}"; do
+    case "$pkg" in
+      polybar-themes-git)
+        aur_packages+=("$pkg")
+        ;;
+      *)
+        official_packages+=("$pkg")
+        ;;
+    esac
+  done
+
   log "Intentando instalar: ${unique_packages[*]}"
 
   if [[ $DRY_RUN -eq 1 ]]; then
@@ -286,14 +326,23 @@ install_missing_dependencies() {
     return 0
   fi
 
-  case "$pkg_manager" in
-    paru|yay)
-      "$pkg_manager" -S --needed --noconfirm "${unique_packages[@]}"
-      ;;
-    pacman)
-      sudo pacman -S --needed --noconfirm "${unique_packages[@]}"
-      ;;
-  esac
+  if ((${#official_packages[@]} > 0)); then
+    if [[ $has_pacman -eq 1 ]]; then
+      sudo pacman -S --needed --noconfirm "${official_packages[@]}"
+    elif [[ -n "$aur_helper" ]]; then
+      "$aur_helper" -S --needed --noconfirm "${official_packages[@]}"
+    fi
+  fi
+
+  if ((${#aur_packages[@]} > 0)); then
+    if [[ -n "$aur_helper" ]]; then
+      "$aur_helper" -S --needed --noconfirm "${aur_packages[@]}"
+    else
+      warn "Faltan paquetes AUR (${aur_packages[*]}) y no se encontro yay/paru."
+      warn "Instala yay o paru para poder instalar paquetes AUR automaticamente."
+      return 1
+    fi
+  fi
 }
 
 safe_write_file() {
@@ -839,6 +888,77 @@ update_i3_autostart_if_exists() {
   rm -f "$tmp"
 }
 
+ensure_polybar_shapes_tray_module() {
+  local target="$POLYBAR_SHAPES_MODULES_FILE"
+  local marker="[module/tray]"
+  local block
+  block="$(cat <<'EOF'
+[module/tray]
+type = internal/tray
+tray-spacing = 8px
+tray-background = ${color.shade7}
+format-background = ${color.shade7}
+
+;; _-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
+EOF
+)"
+
+  if [[ -f "$target" ]] && grep -Fq "$marker" "$target"; then
+    log "Modulo tray ya presente en: $target"
+    return 0
+  fi
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    dry "Se agregaria modulo tray al final de: $target"
+    return 0
+  fi
+
+  if [[ -f "$target" ]]; then
+    backup_file_once "$target"
+  else
+    record_new_file "$target"
+    mkdir -p "$(dirname "$target")"
+    : > "$target"
+  fi
+
+  if [[ -s "$target" ]]; then
+    printf '\n%s\n' "$block" >> "$target"
+  else
+    printf '%s\n' "$block" >> "$target"
+  fi
+
+  log "Agregado modulo tray en: $target"
+}
+
+ensure_polybar_shapes_modules_right_tray() {
+  local target="$POLYBAR_SHAPES_CONFIG_FILE"
+
+  if [[ ! -f "$target" ]]; then
+    warn "No existe config.ini de polybar shapes: $target"
+    return 0
+  fi
+
+  if grep -Eq '^modules-right[[:space:]]*=.*\btray\b' "$target" \
+    && ! grep -Eq '^modules-right[[:space:]]*=.*\bcolor-switch\b' "$target"; then
+    log "modules-right ya usa tray en: $target"
+    return 0
+  fi
+
+  if ! grep -Eq '^modules-right[[:space:]]*=.*\bcolor-switch\b' "$target"; then
+    warn "No se encontro color-switch en modules-right dentro de: $target"
+    return 0
+  fi
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    dry "Se reemplazaria color-switch por tray en modules-right de: $target"
+    return 0
+  fi
+
+  backup_file_once "$target"
+  sed -E -i '/^modules-right[[:space:]]*=/ s/\bcolor-switch\b/tray/g' "$target"
+  log "Reemplazado color-switch por tray en modules-right: $target"
+}
+
 ensure_i3_config_exists() {
   if [[ -f "$I3_CONFIG" ]]; then
     return 0
@@ -890,7 +1010,7 @@ main() {
   done
 
   for c in "${optional_cmds[@]}"; do
-    if ! command_exists "$c"; then
+    if ! dependency_available "$c"; then
       missing+=("$c")
     fi
   done
@@ -1081,6 +1201,9 @@ EOF
   append_managed_block "$I3_CONFIG" "$managed_block"
 
   verify_screenlayout_config_applied "$has_multi"
+
+  ensure_polybar_shapes_tray_module
+  ensure_polybar_shapes_modules_right_tray
 
   update_i3_autostart_if_exists
 
