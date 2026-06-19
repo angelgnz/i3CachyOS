@@ -9,7 +9,7 @@ I3_CONFIG="${I3_DIR}/config"
 I3_SCRIPTS_DIR="${I3_DIR}/scripts"
 I3_AUTOSTART="${I3_SCRIPTS_DIR}/i3_autostart"
 SCREENLAYOUT_DIR="$HOME/.screenlayout"
-SCREENLAYOUT_FILE="${SCREENLAYOUT_DIR}/my-layout.sh"
+SCREENLAYOUT_FILE="${SCREENLAYOUT_DIR}/pantallas.sh"
 POLYBAR_SHAPES_MODULES_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/polybar/shapes/modules.ini"
 POLYBAR_SHAPES_CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/polybar/shapes/config.ini"
 I3_GAP_SIZE="${I3_GAP_SIZE:-12}"
@@ -505,12 +505,6 @@ append_managed_block() {
 }
 
 verify_screenlayout_config_applied() {
-  local has_multi="$1"
-
-  if [[ "$has_multi" != "1" ]]; then
-    return 0
-  fi
-
   local expected_line="exec --no-startup-id ${SCREENLAYOUT_FILE}"
 
   if [[ $DRY_RUN -eq 1 ]]; then
@@ -1215,39 +1209,35 @@ main() {
   update_picom_corner_radius
   update_picom_blur_exclude
 
-  local wallpaper_line="# Configuracion de wallpaper"
-  if [[ -n "$wallpaper_dir" ]]; then
-    local first_wall
-    first_wall="$(find "$wallpaper_dir" -maxdepth 1 -type f | sort | head -n 1 || true)"
-    if [[ -n "$first_wall" ]]; then
-      wallpaper_line+=$'\n'
-      wallpaper_line+="exec --no-startup-id setwallpaper \"${first_wall}\" --mode span"
-    fi
-  fi
-
-  local multi_line=""
-  if [[ "$has_multi" == "1" ]]; then
-    multi_line="$(cat <<EOF
-# Configuracion de monitor doble
-exec --no-startup-id ${SCREENLAYOUT_FILE}
-EOF
-)"
-  fi
-
-  local gap_lines=""
-  if [[ "$I3_GAP_SIZE" =~ ^[0-9]+$ ]] && (( I3_GAP_SIZE > 0 )); then
-    gap_lines=$(cat <<EOF
-# Gap entre ventanas
-gaps inner ${I3_GAP_SIZE}
-EOF
-)
+  if [[ $DRY_RUN -eq 1 ]]; then
+    dry "Se limpiarian lineas legacy de xrandr/feh y launch.sh antiguo en: $I3_CONFIG"
+  else
+    backup_file_once "$I3_CONFIG"
+    sed -E -i '/^[[:space:]]*#exec xrandr --output HDMI-1 --mode 1920x1080 --rate 60 --scale 1x1[[:space:]]*$/d' "$I3_CONFIG"
+    sed -E -i '/^[[:space:]]*#exec xrandr --auto --output HDMI-1 --mode 1920x1080 --above HDMI-2[[:space:]]*$/d' "$I3_CONFIG"
+    sed -E -i '/^[[:space:]]*#exec feh --bg-fill ~\/\.config\/i3\/wallpaper\.png[[:space:]]*$/d' "$I3_CONFIG"
+    sed -E -i '/^[[:space:]]*exec_always[[:space:]]+--no-startup-id[[:space:]]+~\/\.config\/polybar\/launch\.sh([[:space:]]+--shapes)?[[:space:]]*$/d' "$I3_CONFIG"
   fi
 
   local managed_block
   managed_block="$(cat <<EOF
+# Scripts auxiliares
+exec --no-startup-id kwalletd6
+exec --no-startup-id ${I3_SCRIPTS_DIR}/i3_nzxt
+exec --no-startup-id ${I3_SCRIPTS_DIR}/i3_cloud_storage
+exec --no-startup-id gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
+
+# Configuracion de monitor doble
+exec --no-startup-id ${SCREENLAYOUT_FILE}
+
+# Status Bar:
+exec_always --no-startup-id ~/.config/polybar/launch.sh --shapes
+
+# Borders
+gaps inner 12
+exec xborders --border-width 2 --border-radius 12
+
 # Configuracion de i3-layouts
-${gap_lines}
-exec xborders --border-width 2 --border-radius 12 --smart-hide-border
 exec i3-layouts
 
 set \$i3l spiral to workspace 1
@@ -1261,21 +1251,14 @@ set \$i3l spiral to workspace 8
 set \$i3l spiral to workspace 9
 set \$i3l spiral to workspace 0
 
-# Scripts auxiliares
-exec --no-startup-id kwalletd6
-exec --no-startup-id ${I3_SCRIPTS_DIR}/i3_nzxt
-exec --no-startup-id ${I3_SCRIPTS_DIR}/i3_cloud_storage
-exec --no-startup-id gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
-
-${multi_line}
-
-${wallpaper_line}
+# Configuracion de wallpaper
+exec --no-startup-id setwallpaper "/home/angel/Images/wallpapers/edger_lucy_neon-16-9.jpg" --mode span
 EOF
 )"
 
   append_managed_block "$I3_CONFIG" "$managed_block"
 
-  verify_screenlayout_config_applied "$has_multi"
+  verify_screenlayout_config_applied
 
   ensure_polybar_shapes_tray_module
   ensure_polybar_shapes_modules_right_tray
