@@ -1,10 +1,17 @@
 # i3CachyOS
 
-Script de personalizacion de i3wm en CachyOS, migrado a un solo archivo principal.
+Script de personalizacion de i3wm en CachyOS con CLI por subcomandos.
 
 ## Estructura
 
-- `scripts/i3_config.sh`: script principal.
+- `scripts/i3_config.sh`: script principal (dispatcher CLI).
+- `scripts/modules/dependencies.sh`: funciones de deteccion/instalacion de dependencias.
+- `scripts/modules/colorscheme.sh`: funciones de wallpapers + pywal + Alacritty.
+- `scripts/modules/screenlayout.sh`: generacion y verificacion de layout multimonitor.
+- `scripts/modules/picom.sh`: ajustes de `picom.conf`.
+- `scripts/modules/helpers.sh`: instalacion de helpers y parcheo de `i3_autostart`.
+- `scripts/modules/polybar.sh`: ajustes de polybar shapes.
+- `scripts/modules/i3_patch.sh`: parcheo idempotente de `i3/config`.
 - `scripts/apps/i3_nzxt`: helper para iniciar NZXT si existe.
 - `scripts/apps/i3_cloud_storage`: helper para iniciar Overgrive/Nextcloud.
 - `scripts/apps/i3_rofi_apps`: helper para abrir Rofi solo con aplicaciones (`drun`).
@@ -22,7 +29,7 @@ Script de personalizacion de i3wm en CachyOS, migrado a un solo archivo principa
   - `~/.config/i3/scripts/i3_cloud_storage`
 - Copia todos los wallpapers de `wallpapers/` a:
   - `~/Images/wallpapers` o `~/Imágenes/wallpapers`.
-- Detecta multimonitor automaticamente con `xrandr` y crea `~/.screenlayout/my-layout.sh` cuando hay 2+ pantallas.
+- Detecta multimonitor automaticamente con `xrandr` y crea `~/.screenlayout/pantallas.sh` cuando hay 2+ pantallas.
 - Aplica cambios idempotentes en `~/.config/i3/config` usando un bloque gestionado.
 - Intenta ajustar `corner-radius = 12` en `picom.conf` dentro del bloque `#-cr-start` / `#-cr-end`.
 - Inserta autostart de helpers en `~/.config/i3/scripts/i3_autostart` si el archivo existe.
@@ -45,7 +52,40 @@ Para revertir el ultimo cambio aplicado:
 
 ```bash
 chmod +x scripts/i3_config.sh scripts/apps/i3_nzxt scripts/apps/i3_cloud_storage scripts/apps/i3_rofi_apps
-./scripts/i3_config.sh
+./scripts/i3_config.sh setup
+```
+
+Tambien puedes ejecutar `./scripts/i3_config.sh` sin subcomando y se comporta como `setup`.
+
+### Subcomandos disponibles
+
+- `setup`: flujo completo.
+- `deps-check`: muestra dependencias opcionales faltantes.
+- `deps-install [dep ...]`: instala faltantes o solo las dependencias indicadas.
+- `wal [DIR]`: regenera pywal (usa `DIR` o wallpapers detectados).
+- `alacritty`: aplica solo template/import de pywal para Alacritty.
+- `colorscheme`: wallpapers + pywal + Alacritty.
+- `helpers-install`: instala/actualiza helpers y autostart.
+- `screenlayout`: genera layout multimonitor si aplica.
+- `picom-config`: aplica ajustes de picom.
+- `polybar-update`: aplica ajustes de polybar shapes.
+- `i3-patch`: aplica binds y bloque gestionado en `i3/config`.
+- `revert`: restaura desde el ultimo backup.
+
+Ejemplos:
+
+```bash
+# Solo revisar dependencias
+./scripts/i3_config.sh deps-check
+
+# Solo instalar dependencias concretas
+./scripts/i3_config.sh deps-install wal rofi
+
+# Solo pywal + Alacritty
+./scripts/i3_config.sh colorscheme
+
+# Solo parche de i3 config
+./scripts/i3_config.sh i3-patch --dry-run
 ```
 
 Para usar launcher de solo aplicaciones en i3 (atajo `$mod+a`):
@@ -54,12 +94,12 @@ Para usar launcher de solo aplicaciones en i3 (atajo `$mod+a`):
 bindsym $mod+a exec "~/.config/i3/scripts/i3_rofi_apps"
 ```
 
-Opciones:
+Opciones globales:
 
 - `--skip-install`: no intenta instalar faltantes.
 - `--yes`: no interactivo, continua sin instalar faltantes.
 - `--dry-run`: simula cambios sin tocar archivos ni instalar paquetes.
-- `--revert`: restaura el ultimo backup.
+- `--revert`: restaura el ultimo backup (equivalente a `revert`).
 
 ## Nota
 

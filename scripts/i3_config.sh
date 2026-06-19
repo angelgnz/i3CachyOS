@@ -26,11 +26,27 @@ SKIP_INSTALL=0
 NON_INTERACTIVE=0
 REVERT=0
 DRY_RUN=0
+COMMAND="setup"
+SUBCOMMAND_ARGS=()
 
 usage() {
   cat <<'EOF'
 Uso:
-  ./scripts/i3_config.sh [opciones]
+  ./scripts/i3_config.sh [subcomando] [opciones-globales] [argumentos]
+
+Subcomandos:
+  setup             Ejecuta la configuracion completa (por defecto).
+  deps-check        Muestra dependencias opcionales faltantes.
+  deps-install      Instala dependencias faltantes o las indicadas en argumentos.
+  wal [DIR]         Regenera cache de pywal usando DIR (o wallpapers detectados).
+  alacritty         Aplica solo plantilla/import de pywal en Alacritty.
+  colorscheme       Ejecuta flujo de wallpapers + pywal + Alacritty.
+  helpers-install   Instala/actualiza scripts helper y autostart.
+  screenlayout      Genera layout multimonitor cuando aplique.
+  picom-config      Aplica solo ajustes de picom.
+  polybar-update    Aplica solo ajustes de polybar shapes.
+  i3-patch          Aplica solo binds + bloque gestionado en i3 config.
+  revert            Revierte cambios usando el ultimo backup.
 
 Opciones:
   --skip-install   No intentar instalar dependencias faltantes.
@@ -40,6 +56,11 @@ Opciones:
   -h, --help       Muestra esta ayuda.
 EOF
 }
+
+if (($# > 0)) && [[ "$1" != -* ]]; then
+  COMMAND="$1"
+  shift
+fi
 
 while (($# > 0)); do
   case "$1" in
@@ -64,9 +85,8 @@ while (($# > 0)); do
       exit 0
       ;;
     *)
-      echo "[ERROR] Opcion no reconocida: $1" >&2
-      usage
-      exit 1
+      SUBCOMMAND_ARGS+=("$1")
+      shift
       ;;
   esac
 done
@@ -199,7 +219,7 @@ restore_latest_backup() {
   log "Reversion completada."
 }
 
-if [[ $REVERT -eq 1 ]]; then
+if [[ $REVERT -eq 1 || "$COMMAND" == "revert" ]]; then
   restore_latest_backup
   exit 0
 fi
@@ -208,224 +228,21 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
-dependency_available() {
-  local dep="$1"
-
-  case "$dep" in
-    polybar-themes-git)
-      if command_exists yay; then
-        yay -Qq "$dep" >/dev/null 2>&1
-      elif command_exists paru; then
-        paru -Qq "$dep" >/dev/null 2>&1
-      elif command_exists pacman; then
-        pacman -Qq "$dep" >/dev/null 2>&1
-      else
-        return 1
-      fi
-      ;;
-    *)
-      command_exists "$dep"
-      ;;
-  esac
-}
-
-print_missing_dependencies() {
-  local missing=("$@")
-  local dep
-
-  if ((${#missing[@]} == 0)); then
-    return 0
-  fi
-
-  warn "Dependencias opcionales faltantes (${#missing[@]}):"
-  for dep in "${missing[@]}"; do
-    printf '  - %s\n' "$dep" >&2
-  done
-}
-
-collect_missing_dependencies() {
-  local dep
-  local missing=()
-
-  for dep in "$@"; do
-    if ! dependency_available "$dep"; then
-      missing+=("$dep")
-    fi
-  done
-
-  if ((${#missing[@]} > 0)); then
-    printf '%s\n' "${missing[@]}"
-  fi
-}
-
-ask_missing_dependency_action() {
-  local missing=("$@")
-  local choice=""
-
-  printf '\n' >&2
-  print_missing_dependencies "${missing[@]}"
-  printf 'Elige una acción para las dependencias faltantes:\n' >&2
-  printf '  1) Intentar instalar faltantes\n' >&2
-  printf '  2) Continuar sin instalar\n' >&2
-  printf '  3) Detener script\n' >&2
-
-  if [[ $NON_INTERACTIVE -eq 1 ]]; then
-    warn "Modo --yes: se selecciona automáticamente la opción 2 (continuar sin instalar)."
-    echo "2"
-    return 0
-  fi
-
-  while true; do
-    printf 'Selecciona una acción [1-3]: ' >&2
-    read -r choice
-    case "$choice" in
-      1)
-        warn "Opción seleccionada: 1) Intentar instalar faltantes."
-        echo "$choice"
-        return 0
-        ;;
-      2)
-        warn "Opción seleccionada: 2) Continuar sin instalar."
-        echo "$choice"
-        return 0
-        ;;
-      3)
-        warn "Opción seleccionada: 3) Detener script."
-        echo "$choice"
-        return 0
-        ;;
-      *)
-        warn "Seleccion no valida."
-        ;;
-    esac
-  done
-}
-
-install_missing_dependencies() {
-  local missing=("$@")
-  local remaining=()
-  local install_failed=0
-
-  if ((${#missing[@]} == 0)); then
-    return 0
-  fi
-
-  local aur_helper=""
-  if command_exists yay; then
-    aur_helper="yay"
-  elif command_exists paru; then
-    aur_helper="paru"
-  fi
-
-  local has_pacman=0
-  if command_exists pacman; then
-    has_pacman=1
-  fi
-
-  if [[ -z "$aur_helper" && $has_pacman -eq 0 ]]; then
-    err "No se puede instalar automaticamente: no se encontro gestor de paquetes compatible (pacman, yay o paru)."
-    return 1
-  fi
-
-  local packages=()
-  local cmd
-  for cmd in "${missing[@]}"; do
-    case "$cmd" in
-      rofi) packages+=(rofi) ;;
-      picom) packages+=(picom) ;;
-      xrandr) packages+=(xorg-xrandr) ;;
-      xborders) packages+=(xborder-git) ;;
-      i3-layouts) packages+=(i3-layouts) ;;
-      setwallpaper) packages+=(wallutils) ;;
-      nextcloud) packages+=(nextcloud-client) ;;
-      kwallet-pam) packages+=(kwallet-pam) ;;
-      python) packages+=(python) ;;
-      wal) packages+=(pywal) ;;
-      *) packages+=("$cmd") ;;
-    esac
-  done
-
-  local unique_packages=()
-  local seen=""
-  local pkg
-  for pkg in "${packages[@]}"; do
-    if [[ " $seen " != *" $pkg "* ]]; then
-      unique_packages+=("$pkg")
-      seen+=" $pkg"
-    fi
-  done
-
-  local aur_packages=()
-  local official_packages=()
-
-  for pkg in "${unique_packages[@]}"; do
-    case "$pkg" in
-      polybar-themes-git)
-        aur_packages+=("$pkg")
-        ;;
-      *)
-        official_packages+=("$pkg")
-        ;;
-    esac
-  done
-
-  log "Intentando instalar: ${unique_packages[*]}"
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se instalarian paquetes: ${unique_packages[*]}"
-    dry "Modo dry-run: no se realizan instalaciones reales."
-    return 0
-  fi
-
-  log "Si se solicitan credenciales, responde al prompt en esta misma terminal."
-
-  if ((${#official_packages[@]} > 0)); then
-    if [[ -n "$aur_helper" ]]; then
-      log "Instalando paquetes oficiales con $aur_helper: ${official_packages[*]}"
-      if ! "$aur_helper" -S --needed --noconfirm "${official_packages[@]}"; then
-        err "Falló la instalación con $aur_helper para paquetes oficiales."
-        install_failed=1
-      fi
-    elif [[ $has_pacman -eq 1 ]]; then
-      log "Instalando paquetes oficiales con sudo pacman: ${official_packages[*]}"
-      if ! sudo pacman -S --needed --noconfirm "${official_packages[@]}"; then
-        err "Falló la instalación con sudo pacman."
-        install_failed=1
-      fi
-    fi
-  fi
-
-  if ((${#aur_packages[@]} > 0)); then
-    if [[ -n "$aur_helper" ]]; then
-      log "Instalando paquetes AUR con $aur_helper: ${aur_packages[*]}"
-      if ! "$aur_helper" -S --needed --noconfirm "${aur_packages[@]}"; then
-        err "Falló la instalación de paquetes AUR con $aur_helper."
-        install_failed=1
-      fi
-    else
-      err "Faltan paquetes AUR (${aur_packages[*]}) y no se encontro yay/paru para instalarlos automaticamente."
-      install_failed=1
-    fi
-  fi
-
-  mapfile -t remaining < <(collect_missing_dependencies "${missing[@]}")
-
-  if ((${#remaining[@]} == 0)) && [[ $install_failed -eq 0 ]]; then
-    log "Dependencias instaladas correctamente."
-    return 0
-  fi
-
-  if ((${#remaining[@]} > 0)); then
-    warn "Después del intento de instalación, aún faltan dependencias:"
-    print_missing_dependencies "${remaining[@]}"
-  fi
-
-  if [[ $install_failed -ne 0 ]]; then
-    err "La instalación automática no se completó correctamente."
-  fi
-
-  return 1
-}
+# Modulos extraidos por dominio.
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/modules/dependencies.sh"
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/modules/colorscheme.sh"
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/modules/screenlayout.sh"
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/modules/picom.sh"
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/modules/helpers.sh"
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/modules/polybar.sh"
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/modules/i3_patch.sh"
 
 safe_write_file() {
   local target="$1"
@@ -508,696 +325,6 @@ append_managed_block() {
   } >> "$file"
 }
 
-verify_screenlayout_config_applied() {
-  local expected_line="exec --no-startup-id ${SCREENLAYOUT_FILE}"
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se verificaria configuracion de screenlayout en: $I3_CONFIG"
-    return 0
-  fi
-
-  if grep -Fq "$expected_line" "$I3_CONFIG"; then
-    log "Screenlayout configurado en i3 config: $SCREENLAYOUT_FILE"
-  else
-    err "No se aplico la configuracion de screenlayout en: $I3_CONFIG"
-    warn "Verifica permisos o contenido del bloque gestionado e intenta nuevamente."
-  fi
-}
-
-update_picom_corner_radius() {
-  local candidate=""
-  local path
-  for path in "$I3_DIR/picom.conf" "$HOME/.config/picom/picom.conf"; do
-    if [[ -f "$path" ]]; then
-      candidate="$path"
-      break
-    fi
-  done
-
-  if [[ -z "$candidate" ]]; then
-    warn "No se encontro picom.conf. Se omite corner-radius."
-    return 0
-  fi
-
-  local tmp
-  tmp="$(mktemp)"
-
-  awk '
-    BEGIN { inblock=0 }
-    {
-      if ($0 ~ /#-cr-start/) inblock=1
-      if (inblock && $0 ~ /^[[:space:]]*corner-radius[[:space:]]*=/) {
-        sub(/=.*/, "= 12;")
-      }
-      print
-      if ($0 ~ /#-cr-end/) inblock=0
-    }
-  ' "$candidate" > "$tmp"
-
-  if ! cmp -s "$candidate" "$tmp"; then
-    if [[ $DRY_RUN -eq 1 ]]; then
-      dry "Se actualizaria corner-radius a 12 en: $candidate"
-    else
-      backup_file_once "$candidate"
-      cat "$tmp" > "$candidate"
-      log "Actualizado corner-radius en: $candidate"
-    fi
-  else
-    log "corner-radius ya estaba configurado en: $candidate"
-  fi
-
-  rm -f "$tmp"
-}
-
-update_picom_blur_exclude() {
-  local candidate=""
-  local path
-  for path in "$I3_DIR/picom.conf" "$HOME/.config/picom/picom.conf"; do
-    if [[ -f "$path" ]]; then
-      candidate="$path"
-      break
-    fi
-  done
-
-  if [[ -z "$candidate" ]]; then
-    warn "No se encontro picom.conf. Se omite blur-background-exclude."
-    return 0
-  fi
-
-  local entries=(
-    "role = 'xborder'"
-    "class_g = 'xborder'"
-    "name = 'xborder'"
-  )
-
-  # Verificar si ya existen todas las entradas
-  local all_present=1
-  local entry
-  for entry in "${entries[@]}"; do
-    if ! grep -Fq "$entry" "$candidate"; then
-      all_present=0
-      break
-    fi
-  done
-
-  if [[ $all_present -eq 1 ]]; then
-    log "blur-background-exclude xborder ya configurado en: $candidate"
-    return 0
-  fi
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se agregarian entradas xborder a blur-background-exclude en: $candidate"
-    return 0
-  fi
-
-  local tmp
-  tmp="$(mktemp)"
-
-  # Inserta las entradas faltantes dentro del bloque blur-background-exclude = [...]
-  awk -v entries="role = 'xborder'|class_g = 'xborder'|name = 'xborder'" '
-    BEGIN {
-      inblock = 0
-      done = 0
-      n = split(entries, arr, "|")
-    }
-    !done && /blur-background-exclude[[:space:]]*=/ { inblock = 1 }
-    inblock && /\]/ && !done {
-      for (i = 1; i <= n; i++) {
-        found = 0
-        while ((getline line < FILENAME) > 0) { close(FILENAME); break }
-        found = 0
-      }
-      # Agregar entradas que no esten presentes antes del cierre
-      for (i = 1; i <= n; i++) {
-        if (!seen[arr[i]]) {
-          print "  " arr[i] ","
-        }
-      }
-      done = 1
-    }
-    { seen[$0] = 1; print }
-  ' "$candidate" > /dev/null
-
-  # Usar python3 para la manipulacion segura del bloque
-  python3 - "$candidate" "$tmp" <<'PYEOF'
-import sys, re
-
-src = sys.argv[1]
-dst = sys.argv[2]
-
-new_entries = [
-    "  role = 'xborder'",
-    "  class_g = 'xborder'",
-    "  name = 'xborder'",
-]
-
-with open(src, 'r') as f:
-    content = f.read()
-
-# Localizar el bloque blur-background-exclude = [ ... ]
-pattern = re.compile(
-    r'(blur-background-exclude\s*=\s*\[)(.*?)(\])',
-    re.DOTALL
-)
-
-def insert_missing(m):
-    header = m.group(1)
-    body   = m.group(2)
-    footer = m.group(3)
-    for ne in new_entries:
-        key = ne.strip().rstrip(',')
-        if key not in body:
-            # Agregar antes del cierre, con coma si el body ya tiene contenido
-            body = body.rstrip()
-            if body and not body.endswith(','):
-                body += ','
-            body += '\n' + ne + ',\n'
-    return header + body + footer
-
-new_content = pattern.sub(insert_missing, content, count=1)
-
-with open(dst, 'w') as f:
-    f.write(new_content)
-PYEOF
-
-  if ! cmp -s "$candidate" "$tmp"; then
-    backup_file_once "$candidate"
-    cat "$tmp" > "$candidate"
-    log "Agregadas entradas xborder a blur-background-exclude en: $candidate"
-  else
-    log "blur-background-exclude xborder ya estaba presente en: $candidate"
-  fi
-
-  rm -f "$tmp"
-}
-
-detect_wallpaper_dir() {
-  local d1="$HOME/Images/wallpapers"
-  local d2="$HOME/Imágenes/wallpapers"
-
-  if [[ -d "$d1" ]]; then
-    echo "$d1"
-    return 0
-  fi
-  if [[ -d "$d2" ]]; then
-    echo "$d2"
-    return 0
-  fi
-
-  echo "$d1"
-}
-
-copy_wallpapers() {
-  local src_dir="${REPO_ROOT}/wallpapers"
-  local dst_dir
-  dst_dir="$(detect_wallpaper_dir)"
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se aseguraria directorio de wallpapers: $dst_dir"
-  else
-    mkdir -p "$dst_dir"
-  fi
-  if [[ ! -d "$src_dir" ]]; then
-    warn "No existe el directorio de wallpapers en el repo: $src_dir"
-    echo ""
-    return 0
-  fi
-
-  shopt -s nullglob
-  local files=("$src_dir"/*)
-  shopt -u nullglob
-
-  if ((${#files[@]} == 0)); then
-    warn "No hay wallpapers para copiar en: $src_dir"
-    echo ""
-    return 0
-  fi
-
-  local f
-  for f in "${files[@]}"; do
-    if [[ -f "$f" ]]; then
-      local target_file="${dst_dir}/$(basename "$f")"
-      if [[ ! -e "$target_file" ]]; then
-        if [[ $DRY_RUN -eq 1 ]]; then
-          dry "Se copiaria wallpaper: $target_file"
-        else
-          cp -a "$f" "$target_file"
-          log "Wallpaper copiado: $target_file"
-        fi
-      fi
-    fi
-  done
-
-  echo "$dst_dir"
-}
-
-ensure_wal_alacritty_template() {
-  local content
-  content="$(cat <<'EOF'
-# Auto-generated by pywal
-
-[colors.primary]
-background = "{background}"
-foreground = "{foreground}"
-
-[colors.cursor]
-text = "{background}"
-cursor = "{foreground}"
-
-[colors.normal]
-black   = "{color0}"
-red     = "{color1}"
-green   = "{color2}"
-yellow  = "{color3}"
-blue    = "{color4}"
-magenta = "{color5}"
-cyan    = "{color6}"
-white   = "{color7}"
-
-[colors.bright]
-black   = "{color8}"
-red     = "{color9}"
-green   = "{color10}"
-yellow  = "{color11}"
-blue    = "{color12}"
-magenta = "{color13}"
-cyan    = "{color14}"
-white   = "{color15}"
-EOF
-)"
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se aseguraria directorio de templates de wal: $WAL_TEMPLATES_DIR"
-  else
-    mkdir -p "$WAL_TEMPLATES_DIR"
-  fi
-
-  if [[ -f "$WAL_ALACRITTY_TEMPLATE" ]]; then
-    local current
-    current="$(cat "$WAL_ALACRITTY_TEMPLATE")"
-    if [[ "$current" == "$content" ]]; then
-      log "Template de Alacritty para wal ya esta actualizado: $WAL_ALACRITTY_TEMPLATE"
-      return 0
-    fi
-  fi
-
-  safe_write_file "$WAL_ALACRITTY_TEMPLATE" "$content"
-  log "Template de Alacritty para wal asegurado en: $WAL_ALACRITTY_TEMPLATE"
-}
-
-regenerate_wal_cache() {
-  local wallpaper_dir="$1"
-
-  if ! command_exists wal; then
-    warn "No se encontro wal (pywal). Se omite regenerar cache de colores."
-    return 0
-  fi
-
-  if [[ -z "$wallpaper_dir" || ! -d "$wallpaper_dir" ]]; then
-    warn "Directorio de wallpapers no valido para wal: $wallpaper_dir"
-    return 0
-  fi
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se ejecutaria: wal -i $wallpaper_dir"
-    return 0
-  fi
-
-  if wal -i "$wallpaper_dir"; then
-    log "Cache de wal regenerada usando: $wallpaper_dir"
-  else
-    warn "wal no pudo regenerar la cache con: $wallpaper_dir"
-  fi
-}
-
-ensure_alacritty_wal_import() {
-  local import_line='import = ["~/.cache/wal/colors-alacritty.toml"]'
-
-  if [[ ! -f "$ALACRITTY_CONFIG_FILE" ]]; then
-    local content
-    content="$(cat <<EOF
-[general]
-$import_line
-EOF
-)"
-    safe_write_file "$ALACRITTY_CONFIG_FILE" "$content"
-    log "Creado config de Alacritty con import de wal: $ALACRITTY_CONFIG_FILE"
-    return 0
-  fi
-
-  if grep -Fq 'colors-alacritty.toml' "$ALACRITTY_CONFIG_FILE"; then
-    log "Import de wal ya presente en Alacritty: $ALACRITTY_CONFIG_FILE"
-    return 0
-  fi
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se agregaria import de wal en: $ALACRITTY_CONFIG_FILE"
-    return 0
-  fi
-
-  local tmp
-  tmp="$(mktemp)"
-
-  awk -v import_line="$import_line" '
-    BEGIN {
-      in_general = 0
-      general_seen = 0
-      import_set = 0
-    }
-
-    /^[[:space:]]*\[[^]]+\][[:space:]]*$/ {
-      if (in_general && !import_set) {
-        print import_line
-        import_set = 1
-      }
-
-      if ($0 ~ /^[[:space:]]*\[general\][[:space:]]*$/) {
-        in_general = 1
-        general_seen = 1
-      } else {
-        in_general = 0
-      }
-
-      print
-      next
-    }
-
-    {
-      if (in_general && $0 ~ /^[[:space:]]*import[[:space:]]*=/) {
-        print import_line
-        import_set = 1
-        next
-      }
-
-      print
-    }
-
-    END {
-      if (!general_seen) {
-        print ""
-        print "[general]"
-        print import_line
-      } else if (in_general && !import_set) {
-        print import_line
-      }
-    }
-  ' "$ALACRITTY_CONFIG_FILE" > "$tmp"
-
-  if ! cmp -s "$ALACRITTY_CONFIG_FILE" "$tmp"; then
-    backup_file_once "$ALACRITTY_CONFIG_FILE"
-    cat "$tmp" > "$ALACRITTY_CONFIG_FILE"
-    log "Agregado import de wal en Alacritty: $ALACRITTY_CONFIG_FILE"
-  else
-    log "Alacritty ya estaba en estado correcto: $ALACRITTY_CONFIG_FILE"
-  fi
-
-  rm -f "$tmp"
-}
-
-create_multimonitor_layout_if_needed() {
-  if ! command_exists xrandr; then
-    warn "xrandr no esta disponible. Se omite auto layout multimonitor."
-    echo "0"
-    return 0
-  fi
-
-  mapfile -t connected < <(xrandr --query | awk '/ connected/{print $1}')
-
-  if ((${#connected[@]} < 2)); then
-    log "Se detecto un solo monitor."
-    echo "0"
-    return 0
-  fi
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se aseguraria directorio: $SCREENLAYOUT_DIR"
-  else
-    mkdir -p "$SCREENLAYOUT_DIR"
-  fi
-  if [[ -f "$SCREENLAYOUT_FILE" ]]; then
-    backup_file_once "$SCREENLAYOUT_FILE"
-  else
-    record_new_file "$SCREENLAYOUT_FILE"
-  fi
-
-  local monitor_specs=()
-  local primary_mon=""
-  local primary_mode=""
-  local primary_width=0
-  local primary_area=0
-  local mon
-
-  for mon in "${connected[@]}"; do
-    local mode
-    mode="$(xrandr --query | awk -v m="$mon" '
-      $1 == m && $2 == "connected" {inside=1; next}
-      inside && $1 ~ /^[0-9]+x[0-9]+$/ {print $1; exit}
-      inside && $1 !~ /^[0-9]+x[0-9]+$/ && NF == 0 {inside=0}
-    ')"
-
-    if [[ -z "$mode" ]]; then
-      mode="1920x1080"
-    fi
-
-    local width
-    local height
-    local area
-
-    width="${mode%x*}"
-    height="${mode#*x}"
-
-    if [[ "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ ]]; then
-      area=$((width * height))
-    else
-      width=1920
-      height=1080
-      area=$((width * height))
-    fi
-
-    monitor_specs+=("${width}|${mon}|${mode}")
-
-    if (( area > primary_area )); then
-      primary_area=$area
-      primary_mon="$mon"
-      primary_mode="$mode"
-      primary_width=$width
-    fi
-  done
-
-  local cmd_lines=()
-  local x_pos=0
-  local ordered_specs=()
-
-  # Ordena de izquierda a derecha por ancho, dejando la pantalla principal
-  # (mayor resolucion) al final para que quede a la derecha.
-  while IFS='|' read -r width mon mode; do
-    if [[ "$mon" != "$primary_mon" ]]; then
-      ordered_specs+=("${width}|${mon}|${mode}")
-    fi
-  done < <(printf '%s\n' "${monitor_specs[@]}" | sort -s -n -t '|' -k1,1)
-
-  ordered_specs+=("${primary_width}|${primary_mon}|${primary_mode}")
-
-  while IFS='|' read -r width mon mode; do
-    if [[ "$mon" == "$primary_mon" ]]; then
-      cmd_lines+=("       --output ${mon} --primary --mode ${mode} --pos ${x_pos}x0 --rotate normal \\")
-    else
-      cmd_lines+=("       --output ${mon} --mode ${mode} --pos ${x_pos}x0 --rotate normal \\")
-    fi
-
-    x_pos=$((x_pos + width))
-  done < <(printf '%s\n' "${ordered_specs[@]}")
-
-  if ((${#cmd_lines[@]} > 0)); then
-    local last_index
-    last_index=$((${#cmd_lines[@]} - 1))
-    cmd_lines[$last_index]="${cmd_lines[$last_index]% \\}"
-  fi
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se generaria layout multimonitor en: $SCREENLAYOUT_FILE"
-  else
-    {
-      echo '#!/usr/bin/env bash'
-      echo 'set -euo pipefail'
-      echo
-      echo 'xrandr \\'
-      printf '%s\n' "${cmd_lines[@]}"
-      echo
-      echo 'echo "Configuracion multimonitor aplicada automaticamente"'
-    } > "$SCREENLAYOUT_FILE"
-
-    chmod +x "$SCREENLAYOUT_FILE"
-    log "Generado layout multimonitor: $SCREENLAYOUT_FILE"
-  fi
-  echo "1"
-}
-
-ensure_helper_scripts() {
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se aseguraria directorio de scripts i3: $I3_SCRIPTS_DIR"
-  else
-    mkdir -p "$I3_SCRIPTS_DIR"
-  fi
-
-  local helper
-  for helper in i3_nzxt i3_cloud_storage i3_rofi_apps i3_polybar_set_theme i3_rofi_powermenu i3_rofi_polybar_theme; do
-    local src="${SCRIPT_DIR}/apps/${helper}"
-    local dst="${I3_SCRIPTS_DIR}/${helper}"
-
-    if [[ ! -f "$src" ]]; then
-      warn "No existe helper en repo: $src"
-      continue
-    fi
-
-    if [[ -f "$dst" ]]; then
-      if ! cmp -s "$src" "$dst"; then
-        if [[ $DRY_RUN -eq 1 ]]; then
-          dry "Se actualizaria helper: $dst"
-        else
-          backup_file_once "$dst"
-          cp -a "$src" "$dst"
-          log "Helper actualizado: $dst"
-        fi
-      fi
-    else
-      if [[ $DRY_RUN -eq 1 ]]; then
-        dry "Se instalaria helper: $dst"
-      else
-        record_new_file "$dst"
-        cp -a "$src" "$dst"
-        log "Helper instalado: $dst"
-      fi
-    fi
-
-    if [[ $DRY_RUN -eq 1 ]]; then
-      dry "Se aplicaria chmod +x a: $dst"
-    else
-      chmod +x "$dst"
-    fi
-  done
-}
-
-update_i3_autostart_if_exists() {
-  if [[ ! -f "$I3_AUTOSTART" ]]; then
-    return 0
-  fi
-
-  local block='\
-# Launch NZXT
-"$idir"/scripts/i3_nzxt
-
-# Launch Cloud Storage
-"$idir"/scripts/i3_cloud_storage\
-'
-
-  if grep -Fq '"$idir"/scripts/i3_nzxt' "$I3_AUTOSTART" && grep -Fq '"$idir"/scripts/i3_cloud_storage' "$I3_AUTOSTART"; then
-    return 0
-  fi
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se insertarian helpers en i3_autostart: $I3_AUTOSTART"
-    return 0
-  fi
-
-  backup_file_once "$I3_AUTOSTART"
-
-  # Limpia entradas viejas para evitar duplicados (Overgrive) y bloque previo.
-  sed -i '/^# Launch NZXT$/d' "$I3_AUTOSTART"
-  sed -i '/^# Launch Overgrive$/d' "$I3_AUTOSTART"
-  sed -i '/^# Launch Cloud Storage$/d' "$I3_AUTOSTART"
-  sed -i '/"\$idir"\/scripts\/i3_nzxt/d' "$I3_AUTOSTART"
-  sed -i '/"\$idir"\/scripts\/i3_overgrive/d' "$I3_AUTOSTART"
-  sed -i '/"\$idir"\/scripts\/i3_cloud_storage/d' "$I3_AUTOSTART"
-
-  local tmp
-  tmp="$(mktemp)"
-
-  if grep -Fq '# Start mpd' "$I3_AUTOSTART"; then
-    awk -v insert="$block" '
-      $0 ~ /# Start mpd/ && !done { printf "%s\n", insert; done=1 }
-      { print }
-    ' "$I3_AUTOSTART" > "$tmp"
-  else
-    cat "$I3_AUTOSTART" > "$tmp"
-    printf '\n%s\n' "$block" >> "$tmp"
-  fi
-
-  cat "$tmp" > "$I3_AUTOSTART"
-  rm -f "$tmp"
-}
-
-ensure_polybar_shapes_tray_module() {
-  local target="$POLYBAR_SHAPES_MODULES_FILE"
-  local marker="[module/tray]"
-  local block
-  block="$(cat <<'EOF'
-[module/tray]
-type = internal/tray
-tray-spacing = 8px
-tray-background = ${color.shade7}
-format-background = ${color.shade7}
-
-;; _-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
-EOF
-)"
-
-  if [[ -f "$target" ]] && grep -Fq "$marker" "$target"; then
-    log "Modulo tray ya presente en: $target"
-    return 0
-  fi
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se agregaria modulo tray al final de: $target"
-    return 0
-  fi
-
-  if [[ -f "$target" ]]; then
-    backup_file_once "$target"
-  else
-    record_new_file "$target"
-    mkdir -p "$(dirname "$target")"
-    : > "$target"
-  fi
-
-  if [[ -s "$target" ]]; then
-    printf '\n%s\n' "$block" >> "$target"
-  else
-    printf '%s\n' "$block" >> "$target"
-  fi
-
-  log "Agregado modulo tray en: $target"
-}
-
-ensure_polybar_shapes_modules_right_tray() {
-  local target="$POLYBAR_SHAPES_CONFIG_FILE"
-
-  if [[ ! -f "$target" ]]; then
-    warn "No existe config.ini de polybar shapes: $target"
-    return 0
-  fi
-
-  if grep -Eq '^modules-right[[:space:]]*=.*\btray\b' "$target" \
-    && ! grep -Eq '^modules-right[[:space:]]*=.*\bcolor-switch\b' "$target"; then
-    log "modules-right ya usa tray en: $target"
-    return 0
-  fi
-
-  if ! grep -Eq '^modules-right[[:space:]]*=.*\bcolor-switch\b' "$target"; then
-    warn "No se encontro color-switch en modules-right dentro de: $target"
-    return 0
-  fi
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se reemplazaria color-switch por tray en modules-right de: $target"
-    return 0
-  fi
-
-  backup_file_once "$target"
-  sed -E -i '/^modules-right[[:space:]]*=/ s/\bcolor-switch\b/tray/g' "$target"
-  log "Reemplazado color-switch por tray en modules-right: $target"
-}
-
 ensure_i3_config_exists() {
   if [[ -f "$I3_CONFIG" ]]; then
     return 0
@@ -1223,7 +350,7 @@ EOF
   log "Creado config base de i3: $I3_CONFIG"
 }
 
-main() {
+command_setup() {
   if [[ $DRY_RUN -eq 1 ]]; then
     log "Modo dry-run activo: no se realizaran cambios reales."
   fi
@@ -1283,165 +410,149 @@ main() {
     fi
   fi
 
-  ensure_helper_scripts
+  command_helpers_install
+  command_colorscheme
+  command_screenlayout
+  command_i3_patch
+  command_picom_config
+  command_polybar_update
 
+  if [[ $DRY_RUN -eq 0 ]]; then
+    log "Configuracion aplicada correctamente."
+  fi
+}
+
+command_deps_check() {
+  local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git mpd wal)
+  local missing=()
+
+  mapfile -t missing < <(collect_missing_dependencies "${optional_cmds[@]}")
+
+  if ((${#missing[@]} == 0)); then
+    log "No faltan dependencias opcionales."
+    return 0
+  fi
+
+  print_missing_dependencies "${missing[@]}"
+  return 1
+}
+
+command_deps_install() {
+  local targets=()
+
+  if [[ $SKIP_INSTALL -eq 1 ]]; then
+    warn "Se omite instalacion por --skip-install"
+    return 0
+  fi
+
+  if ((${#SUBCOMMAND_ARGS[@]} > 0)); then
+    targets=("${SUBCOMMAND_ARGS[@]}")
+  else
+    local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git mpd wal)
+    mapfile -t targets < <(collect_missing_dependencies "${optional_cmds[@]}")
+  fi
+
+  if ((${#targets[@]} == 0)); then
+    log "No hay dependencias para instalar."
+    return 0
+  fi
+
+  install_missing_dependencies "${targets[@]}"
+}
+
+command_wal() {
+  local wallpaper_dir=""
+  if ((${#SUBCOMMAND_ARGS[@]} > 0)); then
+    wallpaper_dir="${SUBCOMMAND_ARGS[0]}"
+  else
+    wallpaper_dir="$(copy_wallpapers)"
+  fi
+
+  ensure_wal_alacritty_template
+  regenerate_wal_cache "$wallpaper_dir"
+}
+
+command_alacritty() {
+  ensure_wal_alacritty_template
+  ensure_alacritty_wal_import
+}
+
+command_colorscheme() {
   local wallpaper_dir
   wallpaper_dir="$(copy_wallpapers)"
 
   ensure_wal_alacritty_template
   regenerate_wal_cache "$wallpaper_dir"
   ensure_alacritty_wal_import
-
-  local has_multi
-  has_multi="$(create_multimonitor_layout_if_needed)"
-
-  if [[ $DRY_RUN -ne 1 ]]; then
-    backup_file_once "$I3_CONFIG"
-  fi
-
-  # Comenta focus parent para dejar libre $mod+a.
-  if grep -Eq '^bindsym \$mod\+a[[:space:]]+focus parent' "$I3_CONFIG"; then
-    if [[ $DRY_RUN -eq 1 ]]; then
-      dry "Se comentaria bindsym \$mod+a focus parent en $I3_CONFIG"
-    else
-      sed -E -i 's/^bindsym \$mod\+a[[:space:]]+focus parent/#bindsym $mod+a focus parent/' "$I3_CONFIG"
-    fi
-  fi
-
-  # Reemplaza o agrega launcher rofi en $mod+a.
-  if grep -Eq '^bindsym \$mod\+a[[:space:]]+exec .*' "$I3_CONFIG"; then
-    if [[ $DRY_RUN -eq 1 ]]; then
-      dry "Se actualizaria launcher rofi en \$mod+a dentro de $I3_CONFIG"
-    else
-      sed -E -i 's|^bindsym \$mod\+a[[:space:]]+exec .*$|bindsym $mod+a exec "~/.config/i3/scripts/i3_rofi_apps"|' "$I3_CONFIG"
-    fi
-  else
-    if [[ $DRY_RUN -eq 1 ]]; then
-      dry "Se agregaria launcher rofi en \$mod+a dentro de $I3_CONFIG"
-    else
-      printf '\n%s\n' 'bindsym $mod+a exec "~/.config/i3/scripts/i3_rofi_apps"' >> "$I3_CONFIG"
-    fi
-  fi
-
-  # Reemplaza o agrega powermenu en $mod+Shift+e.
-  if grep -Eq '^bindsym \$mod\+Shift\+e[[:space:]]+exec .*' "$I3_CONFIG"; then
-    if [[ $DRY_RUN -eq 1 ]]; then
-      dry "Se actualizaria powermenu en \$mod+Shift+e dentro de $I3_CONFIG"
-    else
-      sed -E -i 's|^bindsym \$mod\+Shift\+e[[:space:]]+exec .*$|bindsym $mod+Shift+e exec "~/.config/i3/scripts/i3_rofi_powermenu"|' "$I3_CONFIG"
-    fi
-  else
-    if [[ $DRY_RUN -eq 1 ]]; then
-      dry "Se agregaria powermenu en \$mod+Shift+e dentro de $I3_CONFIG"
-    else
-      printf '\n%s\n' 'bindsym $mod+Shift+e exec "~/.config/i3/scripts/i3_rofi_powermenu"' >> "$I3_CONFIG"
-    fi
-  fi
-
-  # Reemplaza o agrega powermenu en $mod+x.
-  if grep -Eq '^bindsym \$mod\+x[[:space:]]+exec .*' "$I3_CONFIG"; then
-    if [[ $DRY_RUN -eq 1 ]]; then
-      dry "Se actualizaria powermenu en \$mod+x dentro de $I3_CONFIG"
-    else
-      sed -E -i 's|^bindsym \$mod\+x[[:space:]]+exec .*$|bindsym $mod+x exec "~/.config/i3/scripts/i3_rofi_powermenu"|' "$I3_CONFIG"
-    fi
-  else
-    if [[ $DRY_RUN -eq 1 ]]; then
-      dry "Se agregaria powermenu en \$mod+x dentro de $I3_CONFIG"
-    else
-      printf '\n%s\n' 'bindsym $mod+x exec "~/.config/i3/scripts/i3_rofi_powermenu"' >> "$I3_CONFIG"
-    fi
-  fi
-
-  # Reemplaza o agrega selector de tema polybar en $mod+Shift+t.
-  if grep -Eq '^bindsym \$mod\+Shift\+t[[:space:]]+exec .*' "$I3_CONFIG"; then
-    if [[ $DRY_RUN -eq 1 ]]; then
-      dry "Se actualizaria selector de tema polybar en \$mod+Shift+t dentro de $I3_CONFIG"
-    else
-      sed -E -i 's|^bindsym \$mod\+Shift\+t[[:space:]]+exec .*$|bindsym $mod+Shift+t exec "~/.config/i3/scripts/i3_rofi_polybar_theme"|' "$I3_CONFIG"
-    fi
-  else
-    if [[ $DRY_RUN -eq 1 ]]; then
-      dry "Se agregaria selector de tema polybar en \$mod+Shift+t dentro de $I3_CONFIG"
-    else
-      printf '\n%s\n' 'bindsym $mod+Shift+t exec "~/.config/i3/scripts/i3_rofi_polybar_theme"' >> "$I3_CONFIG"
-    fi
-  fi
-
-  # Ajusta borde general a 0 si existe regla global conocida.
-  if grep -Eq '^for_window \[class="\^\.\*"\] border pixel [0-9]+' "$I3_CONFIG"; then
-    if [[ $DRY_RUN -eq 1 ]]; then
-      dry "Se ajustaria border pixel a 0 para class=^.* en $I3_CONFIG"
-    else
-      sed -E -i 's/^for_window \[class="\^\.\*"\] border pixel [0-9]+/for_window [class="^.*"] border pixel 0/' "$I3_CONFIG"
-    fi
-  fi
-
-  update_picom_corner_radius
-  update_picom_blur_exclude
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se limpiarian lineas legacy de xrandr/feh y launch.sh antiguo en: $I3_CONFIG"
-  else
-    backup_file_once "$I3_CONFIG"
-    sed -E -i '/^[[:space:]]*#exec xrandr --output HDMI-1 --mode 1920x1080 --rate 60 --scale 1x1[[:space:]]*$/d' "$I3_CONFIG"
-    sed -E -i '/^[[:space:]]*#exec xrandr --auto --output HDMI-1 --mode 1920x1080 --above HDMI-2[[:space:]]*$/d' "$I3_CONFIG"
-    sed -E -i '/^[[:space:]]*#exec feh --bg-fill ~\/\.config\/i3\/wallpaper\.png[[:space:]]*$/d' "$I3_CONFIG"
-    sed -E -i '/^[[:space:]]*exec_always[[:space:]]+--no-startup-id[[:space:]]+~\/\.config\/polybar\/launch\.sh([[:space:]]+--shapes)?[[:space:]]*$/d' "$I3_CONFIG"
-  fi
-
-  local managed_block
-  managed_block="$(cat <<EOF
-# Scripts auxiliares
-exec --no-startup-id kwalletd6
-exec --no-startup-id ${I3_SCRIPTS_DIR}/i3_nzxt
-exec --no-startup-id ${I3_SCRIPTS_DIR}/i3_cloud_storage
-exec --no-startup-id gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
-
-# Configuracion de monitor doble
-exec --no-startup-id ${SCREENLAYOUT_FILE}
-
-# Status Bar:
-exec_always --no-startup-id ~/.config/polybar/launch.sh --shapes
-
-# Borders
-gaps inner 12
-exec xborders --border-width 2 --border-radius 12
-
-# Configuracion de i3-layouts
-exec i3-layouts
-
-set \$i3l spiral to workspace 1
-set \$i3l spiral to workspace 2
-set \$i3l spiral to workspace 3
-set \$i3l spiral to workspace 4
-set \$i3l spiral to workspace 5
-set \$i3l spiral to workspace 6
-set \$i3l spiral to workspace 7
-set \$i3l spiral to workspace 8
-set \$i3l spiral to workspace 9
-set \$i3l spiral to workspace 0
-
-# Configuracion de wallpaper
-exec --no-startup-id setwallpaper "/home/angel/Images/wallpapers/edger_lucy_neon-16-9.jpg" --mode span
-EOF
-)"
-
-  append_managed_block "$I3_CONFIG" "$managed_block"
-
-  verify_screenlayout_config_applied
-
-  ensure_polybar_shapes_tray_module
-  ensure_polybar_shapes_modules_right_tray
-
-  update_i3_autostart_if_exists
-
-  finalize_backup_manifest
-  if [[ $DRY_RUN -eq 1 ]]; then
-    log "Dry-run completado."
-  else
-    log "Configuracion aplicada correctamente."
-  fi
 }
 
-main "$@"
+command_helpers_install() {
+  ensure_helper_scripts
+  update_i3_autostart_if_exists
+}
+
+command_screenlayout() {
+  ensure_i3_config_exists
+  create_multimonitor_layout_if_needed >/dev/null
+}
+
+command_picom_config() {
+  update_picom_corner_radius
+  update_picom_blur_exclude
+}
+
+command_polybar_update() {
+  ensure_polybar_shapes_tray_module
+  ensure_polybar_shapes_modules_right_tray
+}
+
+dispatch_command() {
+  case "$COMMAND" in
+    setup)
+      command_setup
+      ;;
+    deps-check)
+      command_deps_check
+      ;;
+    deps-install)
+      command_deps_install
+      ;;
+    wal)
+      command_wal
+      ;;
+    alacritty)
+      command_alacritty
+      ;;
+    colorscheme)
+      command_colorscheme
+      ;;
+    helpers-install)
+      command_helpers_install
+      ;;
+    screenlayout)
+      command_screenlayout
+      ;;
+    picom-config)
+      command_picom_config
+      ;;
+    polybar-update)
+      command_polybar_update
+      ;;
+    i3-patch)
+      command_i3_patch
+      ;;
+    *)
+      err "Subcomando no reconocido: $COMMAND"
+      usage
+      return 1
+      ;;
+  esac
+}
+
+dispatch_command
+
+if [[ $DRY_RUN -eq 1 ]]; then
+  log "Dry-run completado."
+fi
+
+finalize_backup_manifest
