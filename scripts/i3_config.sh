@@ -46,6 +46,8 @@ Subcomandos:
   picom-config      Aplica solo ajustes de picom.
   polybar-update    Aplica solo ajustes de polybar shapes.
   i3-patch          Aplica solo binds + bloque gestionado en i3 config.
+  backup-list       Lista backups disponibles.
+  backup-restore    Restaura backup por timestamp, manifiesto o latest.
   revert            Revierte cambios usando el ultimo backup.
 
 Opciones:
@@ -182,6 +184,17 @@ restore_latest_backup() {
 
   log "Revirtiendo cambios desde: $manifest_path"
 
+  restore_from_manifest "$manifest_path"
+}
+
+restore_from_manifest() {
+  local manifest_path="$1"
+
+  if [[ ! -f "$manifest_path" ]]; then
+    err "El manifiesto de backup no es valido: $manifest_path"
+    return 1
+  fi
+
   while IFS='|' read -r kind p1 p2; do
     case "$kind" in
       FILE)
@@ -217,6 +230,68 @@ restore_latest_backup() {
   done < "$manifest_path"
 
   log "Reversion completada."
+}
+
+list_backups() {
+  local manifests=()
+  local latest_manifest=""
+
+  if [[ -L "$LATEST_MANIFEST_LINK" || -f "$LATEST_MANIFEST_LINK" ]]; then
+    latest_manifest="$(readlink -f "$LATEST_MANIFEST_LINK" 2>/dev/null || true)"
+  fi
+
+  shopt -s nullglob
+  manifests=("$BACKUP_ROOT"/*/manifest.txt)
+  shopt -u nullglob
+
+  if ((${#manifests[@]} == 0)); then
+    warn "No hay backups registrados en: $BACKUP_ROOT"
+    return 1
+  fi
+
+  log "Backups disponibles en: $BACKUP_ROOT"
+
+  local manifest
+  local ts
+  local marker
+  for manifest in "${manifests[@]}"; do
+    ts="$(basename "$(dirname "$manifest")")"
+    marker=""
+    if [[ -n "$latest_manifest" && "$(readlink -f "$manifest")" == "$latest_manifest" ]]; then
+      marker=" [latest]"
+    fi
+    printf '  - %s%s\n' "$ts" "$marker"
+  done
+}
+
+command_backup_list() {
+  list_backups
+}
+
+command_backup_restore() {
+  local backup_id="${SUBCOMMAND_ARGS[0]:-latest}"
+  local manifest_path=""
+
+  case "$backup_id" in
+    latest)
+      restore_latest_backup
+      return 0
+      ;;
+    *)
+      if [[ -f "$backup_id" ]]; then
+        manifest_path="$backup_id"
+      elif [[ -f "$BACKUP_ROOT/$backup_id/manifest.txt" ]]; then
+        manifest_path="$BACKUP_ROOT/$backup_id/manifest.txt"
+      else
+        err "No se encontro backup: $backup_id"
+        warn "Usa backup-list para ver timestamps disponibles."
+        return 1
+      fi
+      ;;
+  esac
+
+  log "Revirtiendo cambios desde: $manifest_path"
+  restore_from_manifest "$manifest_path"
 }
 
 if [[ $REVERT -eq 1 || "$COMMAND" == "revert" ]]; then
@@ -540,6 +615,12 @@ dispatch_command() {
       ;;
     i3-patch)
       command_i3_patch
+      ;;
+    backup-list)
+      command_backup_list
+      ;;
+    backup-restore)
+      command_backup_restore
       ;;
     *)
       err "Subcomando no reconocido: $COMMAND"

@@ -70,6 +70,8 @@ Tambien puedes ejecutar `./scripts/i3_config.sh` sin subcomando y se comporta co
 - `picom-config`: aplica ajustes de picom.
 - `polybar-update`: aplica ajustes de polybar shapes.
 - `i3-patch`: aplica binds y bloque gestionado en `i3/config`.
+- `backup-list`: lista backups guardados con timestamp.
+- `backup-restore [ID|latest|MANIFEST]`: restaura por timestamp, latest o ruta de manifiesto.
 - `revert`: restaura desde el ultimo backup.
 
 Ejemplos:
@@ -86,6 +88,12 @@ Ejemplos:
 
 # Solo parche de i3 config
 ./scripts/i3_config.sh i3-patch --dry-run
+
+# Listar backups disponibles
+./scripts/i3_config.sh backup-list
+
+# Restaurar backup por timestamp
+./scripts/i3_config.sh backup-restore 20260619-130331 --dry-run
 ```
 
 Para usar launcher de solo aplicaciones en i3 (atajo `$mod+a`):
