@@ -210,12 +210,12 @@ dependency_available() {
 
   case "$dep" in
     polybar-themes-git)
-      if command_exists pacman; then
-        pacman -Qq "$dep" >/dev/null 2>&1
+      if command_exists yay; then
+        yay -Qq "$dep" >/dev/null 2>&1
       elif command_exists paru; then
         paru -Qq "$dep" >/dev/null 2>&1
-      elif command_exists yay; then
-        yay -Qq "$dep" >/dev/null 2>&1
+      elif command_exists pacman; then
+        pacman -Qq "$dep" >/dev/null 2>&1
       else
         return 1
       fi
@@ -308,10 +308,10 @@ install_missing_dependencies() {
   fi
 
   local aur_helper=""
-  if command_exists paru; then
-    aur_helper="paru"
-  elif command_exists yay; then
+  if command_exists yay; then
     aur_helper="yay"
+  elif command_exists paru; then
+    aur_helper="paru"
   fi
 
   local has_pacman=0
@@ -331,9 +331,9 @@ install_missing_dependencies() {
       rofi) packages+=(rofi) ;;
       picom) packages+=(picom) ;;
       xrandr) packages+=(xorg-xrandr) ;;
-      xborders) packages+=(xborders) ;;
+      xborders) packages+=(xborder-git) ;;
       i3-layouts) packages+=(i3-layouts) ;;
-      setwallpaper) packages+=(setwallpaper) ;;
+      setwallpaper) packages+=(wallutils) ;;
       nextcloud) packages+=(nextcloud-client) ;;
       kwallet-pam) packages+=(kwallet-pam) ;;
       python) packages+=(python) ;;
@@ -376,16 +376,16 @@ install_missing_dependencies() {
   log "Si se solicitan credenciales, responde al prompt en esta misma terminal."
 
   if ((${#official_packages[@]} > 0)); then
-    if [[ $has_pacman -eq 1 ]]; then
-      log "Instalando paquetes oficiales con sudo pacman: ${official_packages[*]}"
-      if ! sudo pacman -S --needed --noconfirm "${official_packages[@]}"; then
-        err "Falló la instalación con sudo pacman."
-        install_failed=1
-      fi
-    elif [[ -n "$aur_helper" ]]; then
+    if [[ -n "$aur_helper" ]]; then
       log "Instalando paquetes oficiales con $aur_helper: ${official_packages[*]}"
       if ! "$aur_helper" -S --needed --noconfirm "${official_packages[@]}"; then
         err "Falló la instalación con $aur_helper para paquetes oficiales."
+        install_failed=1
+      fi
+    elif [[ $has_pacman -eq 1 ]]; then
+      log "Instalando paquetes oficiales con sudo pacman: ${official_packages[*]}"
+      if ! sudo pacman -S --needed --noconfirm "${official_packages[@]}"; then
+        err "Falló la instalación con sudo pacman."
         install_failed=1
       fi
     fi
@@ -1076,7 +1076,7 @@ main() {
   fi
 
   local required_cmds=(sed awk grep cp chmod mkdir)
-  local optional_cmds=(rofi picom xrandr xborders i3-layouts setwallpaper python nextcloud kwallet-pam polybar-themes-git mpd)
+  local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git mpd)
   local missing=()
   local c
 
