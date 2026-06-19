@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+ALACRITTY_BASE_COLORS_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/alacritty/colors-base.toml"
+
 detect_wallpaper_dir() {
   local d1="$HOME/Images/wallpapers"
   local d2="$HOME/Imágenes/wallpapers"
@@ -140,7 +142,38 @@ regenerate_wal_cache() {
 }
 
 ensure_alacritty_wal_import() {
-  local import_line='import = ["~/.cache/wal/colors-alacritty.toml"]'
+  local base_colors_import='~/.config/alacritty/colors-base.toml'
+  local wal_import='~/.cache/wal/colors-alacritty.toml'
+  local import_line
+  import_line="import = [\"${base_colors_import}\", \"${wal_import}\"]"
+
+  local default_colors_content
+  default_colors_content="$(cat <<'EOF'
+[colors.primary]
+background = "0x2E3440"
+foreground = "0xD8DEE9"
+
+[colors.normal]
+black = "0x3B4252"
+red = "0xBF616A"
+green = "0xA3BE8C"
+yellow = "0xEBCB8B"
+blue = "0x81A1C1"
+magenta = "0xB48EAD"
+cyan = "0x88C0D0"
+white = "0xE5E9F0"
+
+[colors.bright]
+black = "0x4C566A"
+red = "0xBF616A"
+green = "0xA3BE8C"
+yellow = "0xEBCB8B"
+blue = "0x81A1C1"
+magenta = "0xB48EAD"
+cyan = "0x8FBCBB"
+white = "0xECEFF4"
+EOF
+)"
 
   if [[ ! -f "$ALACRITTY_CONFIG_FILE" ]]; then
     local content
@@ -149,18 +182,84 @@ ensure_alacritty_wal_import() {
 $import_line
 EOF
 )"
+    safe_write_file "$ALACRITTY_BASE_COLORS_FILE" "$default_colors_content"
     safe_write_file "$ALACRITTY_CONFIG_FILE" "$content"
-    log "Creado config de Alacritty con import de wal: $ALACRITTY_CONFIG_FILE"
+    log "Creado config de Alacritty con imports y paleta base: $ALACRITTY_CONFIG_FILE"
     return 0
   fi
 
-  if grep -Fq 'colors-alacritty.toml' "$ALACRITTY_CONFIG_FILE"; then
-    log "Import de wal ya presente en Alacritty: $ALACRITTY_CONFIG_FILE"
-    return 0
+  local tmp_config
+  local tmp_colors
+  local extracted=0
+  local extracted_colors=""
+
+  tmp_config="$(mktemp)"
+  tmp_colors="$(mktemp)"
+
+  awk -v colors_out="$tmp_colors" '
+    BEGIN {
+      in_colors = 0
+      found_colors = 0
+    }
+
+    function is_section(line) {
+      return line ~ /^[[:space:]]*\[[^]]+\][[:space:]]*$/
+    }
+
+    function is_colors_section(line) {
+      return line ~ /^[[:space:]]*\[colors(\.[^]]+)?\][[:space:]]*$/
+    }
+
+    {
+      if (is_section($0)) {
+        if (is_colors_section($0)) {
+          in_colors = 1
+          found_colors = 1
+        } else {
+          in_colors = 0
+        }
+      }
+
+      if (in_colors) {
+        print >> colors_out
+        next
+      }
+
+      print
+    }
+
+    END {
+      if (found_colors) {
+        exit 10
+      }
+      exit 0
+    }
+  ' "$ALACRITTY_CONFIG_FILE" > "$tmp_config" || extracted=$?
+
+  if [[ $extracted -eq 10 && -s "$tmp_colors" ]]; then
+    extracted_colors="$(cat "$tmp_colors")"
+    safe_write_file "$ALACRITTY_BASE_COLORS_FILE" "$extracted_colors"
+
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se extraerian bloques [colors.*] a: $ALACRITTY_BASE_COLORS_FILE"
+    else
+      if ! cmp -s "$ALACRITTY_CONFIG_FILE" "$tmp_config"; then
+        backup_file_once "$ALACRITTY_CONFIG_FILE"
+        cat "$tmp_config" > "$ALACRITTY_CONFIG_FILE"
+        log "Bloques [colors.*] extraidos de Alacritty hacia: $ALACRITTY_BASE_COLORS_FILE"
+      fi
+    fi
+  elif [[ ! -f "$ALACRITTY_BASE_COLORS_FILE" ]]; then
+    safe_write_file "$ALACRITTY_BASE_COLORS_FILE" "$default_colors_content"
+    log "Creada paleta base por defecto en: $ALACRITTY_BASE_COLORS_FILE"
+  elif [[ $extracted -ne 0 ]]; then
+    warn "No se pudo analizar $ALACRITTY_CONFIG_FILE para extraer [colors.*]."
   fi
+
+  rm -f "$tmp_config" "$tmp_colors"
 
   if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se agregaria import de wal en: $ALACRITTY_CONFIG_FILE"
+    dry "Se aseguraria import en orden (base, wal) en: $ALACRITTY_CONFIG_FILE"
     return 0
   fi
 
