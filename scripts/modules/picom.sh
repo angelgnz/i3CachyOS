@@ -61,9 +61,9 @@ update_picom_blur_exclude() {
   fi
 
   local entries=(
-    "role = 'xborder'"
-    "class_g = 'xborder'"
-    "name = 'xborder'"
+    '  "role = '\''xborder'\''",'
+    '  "class_g = '\''xborder'\''",'
+    '  "name = '\''xborder'\''",'
   )
 
   local all_present=1
@@ -88,7 +88,7 @@ update_picom_blur_exclude() {
   local tmp
   tmp="$(mktemp)"
 
-  awk -v entries="role = 'xborder'|class_g = 'xborder'|name = 'xborder'" '
+  awk -v entries='"  \"role = '\''xborder'\''\","|  \"class_g = '\''xborder'\''\","|  \"name = '\''xborder'\''\","' '
     BEGIN {
       inblock = 0
       done = 0
@@ -118,9 +118,9 @@ src = sys.argv[1]
 dst = sys.argv[2]
 
 new_entries = [
-    "  role = 'xborder'",
-    "  class_g = 'xborder'",
-    "  name = 'xborder'",
+  '  "role = '\''xborder'\''",',
+  '  "class_g = '\''xborder'\''",',
+  '  "name = '\''xborder'\''",',
 ]
 
 with open(src, 'r') as f:
@@ -156,6 +156,47 @@ PYEOF
     log "Agregadas entradas xborder a blur-background-exclude en: $candidate"
   else
     log "blur-background-exclude xborder ya estaba presente en: $candidate"
+  fi
+
+  rm -f "$tmp"
+}
+
+update_picom_refresh_rate_comment() {
+  local candidate=""
+  local path
+  for path in "$I3_DIR/picom.conf" "$HOME/.config/picom/picom.conf"; do
+    if [[ -f "$path" ]]; then
+      candidate="$path"
+      break
+    fi
+  done
+
+  if [[ -z "$candidate" ]]; then
+    warn "No se encontro picom.conf. Se omite refresh-rate."
+    return 0
+  fi
+
+  local tmp
+  tmp="$(mktemp)"
+
+  awk '
+    /^[[:space:]]*refresh-rate[[:space:]]*=[[:space:]]*0[[:space:]]*;?[[:space:]]*$/ {
+      print "#" $0
+      next
+    }
+    { print }
+  ' "$candidate" > "$tmp"
+
+  if ! cmp -s "$candidate" "$tmp"; then
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se comentaria refresh-rate = 0 en: $candidate"
+    else
+      backup_file_once "$candidate"
+      cat "$tmp" > "$candidate"
+      log "Comentado refresh-rate = 0 en: $candidate"
+    fi
+  else
+    log "refresh-rate = 0 ya estaba comentado o ausente en: $candidate"
   fi
 
   rm -f "$tmp"

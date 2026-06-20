@@ -393,6 +393,81 @@ backup_root_file_once() {
   fi
 }
 
+ensure_sddm_theme_config() {
+  local target="/etc/sddm.conf"
+  local tmp
+  tmp="$(mktemp)"
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    if [[ -e "$target" ]]; then
+      dry "Se estableceria tema SDDM en: $target"
+      backup_root_file_once "$target"
+    else
+      dry "Se crearia archivo SDDM: $target"
+      record_new_file "$target"
+    fi
+    rm -f "$tmp"
+    return 0
+  fi
+
+  if [[ -e "$target" ]]; then
+    backup_root_file_once "$target"
+    awk '
+      BEGIN { in_theme=0; theme_found=0; current_written=0 }
+      function ensure_current() {
+        if (theme_found && !current_written) {
+          print "Current=pixie"
+          current_written=1
+        }
+      }
+      /^\[Theme\][[:space:]]*$/ {
+        if (in_theme) {
+          ensure_current()
+        }
+        in_theme=1
+        theme_found=1
+        current_written=0
+        print
+        next
+      }
+      in_theme && /^\[/ {
+        ensure_current()
+        in_theme=0
+      }
+      in_theme && /^[[:space:]]*Current[[:space:]]*=/ {
+        print "Current=pixie"
+        current_written=1
+        next
+      }
+      { print }
+      END {
+        if (in_theme) {
+          ensure_current()
+        }
+        if (!theme_found) {
+          print ""
+          print "[Theme]"
+          print "Current=pixie"
+        }
+      }
+    ' "$target" > "$tmp"
+  else
+    record_new_file "$target"
+    cat > "$tmp" <<'EOF'
+[Theme]
+Current=pixie
+EOF
+  fi
+
+  if sudo install -Dm644 "$tmp" "$target"; then
+    log "Tema SDDM configurado: pixie"
+  else
+    warn "No se pudo configurar el tema SDDM en: $target"
+  fi
+
+  rm -f "$tmp"
+}
+
 replace_pixie_background() {
   local pixie_dir="/usr/share/sddm/themes/pixie"
   local pixie_assets_dir="${pixie_dir}/assets"
@@ -796,6 +871,7 @@ command_screenlayout() {
 command_picom_config() {
   update_picom_corner_radius
   update_picom_blur_exclude
+  update_picom_refresh_rate_comment
 }
 
 command_polybar_update() {
