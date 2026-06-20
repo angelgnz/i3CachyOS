@@ -870,6 +870,7 @@ command_screenlayout() {
 
 command_picom_config() {
   update_picom_corner_radius
+  update_picom_opacity_rule
   update_picom_blur_exclude
   update_picom_refresh_rate_comment
 }

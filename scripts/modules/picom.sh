@@ -45,6 +45,92 @@ update_picom_corner_radius() {
   rm -f "$tmp"
 }
 
+update_picom_opacity_rule() {
+  local candidate=""
+  local path
+  for path in "$I3_DIR/picom.conf" "$HOME/.config/picom/picom.conf"; do
+    if [[ -f "$path" ]]; then
+      candidate="$path"
+      break
+    fi
+  done
+
+  if [[ -z "$candidate" ]]; then
+    warn "No se encontro picom.conf. Se omite opacity-rule."
+    return 0
+  fi
+
+  local tmp
+  tmp="$(mktemp)"
+
+  python3 - "$candidate" "$tmp" <<'PYEOF'
+import re
+import sys
+
+src = sys.argv[1]
+dst = sys.argv[2]
+
+desired_entries = [
+  '  "75:class_g     = '\''Thunar'\''",',
+  '  "75:class_g     = '\''Org.xfce.mousepad'\''"',
+]
+
+with open(src, 'r', encoding='utf-8') as handle:
+    content = handle.read()
+
+pattern = re.compile(r'(opacity-rule\s*=\s*\[)(.*?)(\])', re.DOTALL)
+match = pattern.search(content)
+
+if not match:
+    block = 'opacity-rule = [\n' + '\n'.join(desired_entries) + '\n];\n'
+    if content and not content.endswith('\n'):
+        content += '\n'
+    content += '\n' + block
+    with open(dst, 'w', encoding='utf-8') as handle:
+        handle.write(content)
+    raise SystemExit(0)
+
+header, body, footer = match.groups()
+body_lines = body.splitlines()
+existing_entries = set(line.strip().rstrip(',') for line in body_lines)
+missing_entries = [entry for entry in desired_entries if entry.strip().rstrip(',') not in existing_entries]
+
+if not missing_entries:
+    with open(dst, 'w', encoding='utf-8') as handle:
+        handle.write(content)
+    raise SystemExit(0)
+
+body = body.rstrip()
+if body and not body.endswith(','):
+    body += ','
+
+for index, entry in enumerate(missing_entries):
+    body += '\n' + entry
+    if index < len(missing_entries) - 1:
+        body += ','
+
+body += '\n'
+new_content = content[:match.start()] + header + body + footer + content[match.end():]
+
+with open(dst, 'w', encoding='utf-8') as handle:
+    handle.write(new_content)
+PYEOF
+
+  if ! cmp -s "$candidate" "$tmp"; then
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se actualizarian las reglas de opacity-rule en: $candidate"
+    else
+      backup_file_once "$candidate"
+      cat "$tmp" > "$candidate"
+      log "Actualizadas reglas de opacity-rule en: $candidate"
+    fi
+  else
+    log "opacity-rule ya estaba configurado en: $candidate"
+  fi
+
+  rm -f "$tmp"
+}
+
 update_picom_blur_exclude() {
   local candidate=""
   local path
