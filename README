@@ -118,6 +118,8 @@ Opciones globales:
 - El flujo `setup` ahora incluye fase de display manager.
 - Se valida `sudo` una sola vez al inicio de esa fase (`sudo -v`).
 - Se instala `sddm` con fallback automatico de gestor: `yay` -> `paru` -> `sudo pacman`.
+- Despues de instalar `pixie-sddm-git`, el script reemplaza `city.jpg` del repo sobre `/usr/share/sddm/themes/pixie/assets/background.jpg` (sin editar `theme.conf`).
+- Si existe una imagen en `avatar/` del repo (`.jpg`, `.jpeg`, `.png`, `.webp`), tambien reemplaza `/usr/share/sddm/themes/pixie/assets/avatar.jpg` con la primera imagen encontrada.
 - Para evitar conflictos, se desactivan display managers activos conocidos (`ly`, `lightdm`, `gdm`, `lxdm`, `xdm`) antes de habilitar `sddm.service`.
 
 ## Nota

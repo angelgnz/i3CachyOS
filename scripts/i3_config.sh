@@ -365,6 +365,125 @@ disable_conflicting_display_managers() {
   done
 }
 
+backup_root_file_once() {
+  local target="$1"
+  if [[ ! -e "$target" ]]; then
+    return 0
+  fi
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    dry "Se respaldaria archivo root: $target"
+    return 0
+  fi
+
+  ensure_backup_session
+
+  if grep -Fq "FILE|${target}|" "$MANIFEST" 2>/dev/null; then
+    return 0
+  fi
+
+  local safe_name
+  safe_name="$(echo "$target" | sed 's#^/#root/#; s#/#__#g')"
+  local backup_path="${BACKUP_DIR}/${safe_name}"
+
+  if sudo cp -a "$target" "$backup_path"; then
+    printf 'FILE|%s|%s\n' "$target" "$backup_path" >> "$MANIFEST"
+  else
+    warn "No se pudo respaldar archivo root: $target"
+  fi
+}
+
+replace_pixie_background() {
+  local pixie_dir="/usr/share/sddm/themes/pixie"
+  local pixie_assets_dir="${pixie_dir}/assets"
+  local pixie_background="${pixie_assets_dir}/background.jpg"
+  local pixie_avatar="${pixie_assets_dir}/avatar.jpg"
+  local city_source="${REPO_ROOT}/wallpapers/city.jpg"
+  local avatar_repo_dir="${REPO_ROOT}/avatar"
+  local avatar_source=""
+  local candidate
+
+  if [[ ! -d "$pixie_assets_dir" ]]; then
+    warn "No existe tema Pixie en: $pixie_assets_dir"
+    return 0
+  fi
+
+  if [[ ! -f "$city_source" ]]; then
+    warn "No se encontro city.jpg en el repo: $city_source"
+    return 0
+  fi
+
+  if [[ -d "$avatar_repo_dir" ]]; then
+    shopt -s nullglob
+    for candidate in "$avatar_repo_dir"/*; do
+      case "${candidate,,}" in
+        *.jpg|*.jpeg|*.png|*.webp)
+          avatar_source="$candidate"
+          break
+          ;;
+      esac
+    done
+    shopt -u nullglob
+  fi
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    dry "Se reemplazaria fondo Pixie: $pixie_background con $city_source"
+    if [[ -e "$pixie_background" ]]; then
+      backup_root_file_once "$pixie_background"
+    else
+      record_new_file "$pixie_background"
+    fi
+    return 0
+  fi
+
+  if [[ -e "$pixie_background" ]]; then
+    backup_root_file_once "$pixie_background"
+    if sudo cmp -s "$city_source" "$pixie_background"; then
+      log "Fondo Pixie ya estaba actualizado: $pixie_background"
+      return 0
+    fi
+  else
+    record_new_file "$pixie_background"
+  fi
+
+  if sudo install -Dm644 "$city_source" "$pixie_background"; then
+    log "Fondo Pixie actualizado: $pixie_background"
+  else
+    warn "No se pudo actualizar fondo Pixie: $pixie_background"
+  fi
+
+  if [[ -z "$avatar_source" ]]; then
+    log "No se encontro imagen en ${avatar_repo_dir}; se mantiene avatar actual de Pixie."
+    return 0
+  fi
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    dry "Se reemplazaria avatar Pixie: $pixie_avatar con $avatar_source"
+    if [[ -e "$pixie_avatar" ]]; then
+      backup_root_file_once "$pixie_avatar"
+    else
+      record_new_file "$pixie_avatar"
+    fi
+    return 0
+  fi
+
+  if [[ -e "$pixie_avatar" ]]; then
+    backup_root_file_once "$pixie_avatar"
+    if sudo cmp -s "$avatar_source" "$pixie_avatar"; then
+      log "Avatar Pixie ya estaba actualizado: $pixie_avatar"
+      return 0
+    fi
+  else
+    record_new_file "$pixie_avatar"
+  fi
+
+  if sudo install -Dm644 "$avatar_source" "$pixie_avatar"; then
+    log "Avatar Pixie actualizado: $pixie_avatar"
+  else
+    warn "No se pudo actualizar avatar Pixie: $pixie_avatar"
+  fi
+}
+
 command_display_manager() {
   local target_dm_pkg="sddm"
   local target_dm_service="sddm.service"
@@ -380,10 +499,17 @@ command_display_manager() {
       err "No se pudo instalar $target_dm_pkg."
       return 1
     fi
+    log "Instalando tema SDDM: pixie-sddm-git"
+    if ! install_missing_dependencies "pixie-sddm-git"; then
+      warn "No se pudo instalar pixie-sddm-git. Continuando sin tema SDDM."
+    fi
   fi
+
+  replace_pixie_background
 
   if [[ $DRY_RUN -eq 1 ]]; then
     dry "Se deshabilitarian display managers en conflicto y se habilitaria $target_dm_service"
+    dry "Se instalarian: $target_dm_pkg pixie-sddm-git"
     return 0
   fi
 

@@ -152,7 +152,7 @@ install_missing_dependencies() {
 
   for pkg in "${unique_packages[@]}"; do
     case "$pkg" in
-      polybar-themes-git)
+      polybar-themes-git|pixie-sddm-git)
         aur_packages+=("$pkg")
         ;;
       *)
