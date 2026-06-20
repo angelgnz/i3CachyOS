@@ -62,6 +62,7 @@ Tambien puedes ejecutar `./scripts/i3_config.sh` sin subcomando y se comporta co
 - `setup`: flujo completo.
 - `deps-check`: muestra dependencias opcionales faltantes.
 - `deps-install [dep ...]`: instala faltantes o solo las dependencias indicadas.
+- `display-manager`: instala `sddm`, desactiva display managers en conflicto (incluye `ly`) y habilita `sddm.service`.
 - `wal [DIR]`: regenera pywal (usa `DIR` o wallpapers detectados).
 - `alacritty`: aplica solo template/import de pywal para Alacritty.
 - `colorscheme`: wallpapers + pywal + Alacritty.
@@ -86,6 +87,9 @@ Ejemplos:
 # Solo pywal + Alacritty
 ./scripts/i3_config.sh colorscheme
 
+# Solo configurar display manager (migracion LY -> SDDM)
+./scripts/i3_config.sh display-manager
+
 # Solo parche de i3 config
 ./scripts/i3_config.sh i3-patch --dry-run
 
@@ -108,6 +112,13 @@ Opciones globales:
 - `--yes`: no interactivo, continua sin instalar faltantes.
 - `--dry-run`: simula cambios sin tocar archivos ni instalar paquetes.
 - `--revert`: restaura el ultimo backup (equivalente a `revert`).
+
+### Display manager y sudo
+
+- El flujo `setup` ahora incluye fase de display manager.
+- Se valida `sudo` una sola vez al inicio de esa fase (`sudo -v`).
+- Se instala `sddm` con fallback automatico de gestor: `yay` -> `paru` -> `sudo pacman`.
+- Para evitar conflictos, se desactivan display managers activos conocidos (`ly`, `lightdm`, `gdm`, `lxdm`, `xdm`) antes de habilitar `sddm.service`.
 
 ## Nota
 

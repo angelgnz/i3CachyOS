@@ -38,6 +38,7 @@ Subcomandos:
   setup             Ejecuta la configuracion completa (por defecto).
   deps-check        Muestra dependencias opcionales faltantes.
   deps-install      Instala dependencias faltantes o las indicadas en argumentos.
+  display-manager   Instala/activa SDDM y desactiva display managers en conflicto.
   wal [DIR]         Regenera cache de pywal usando DIR (o wallpapers detectados).
   alacritty         Aplica solo plantilla/import de pywal en Alacritty.
   colorscheme       Ejecuta flujo de wallpapers + pywal + Alacritty.
@@ -105,6 +106,7 @@ BACKUP_DIR="${BACKUP_ROOT}/${TIMESTAMP}"
 MANIFEST="${BACKUP_DIR}/manifest.txt"
 
 backup_started=0
+SUDO_AUTH_READY=0
 
 ensure_backup_session() {
   if [[ $DRY_RUN -eq 1 ]]; then
@@ -303,6 +305,99 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+ensure_sudo_session() {
+  if [[ $DRY_RUN -eq 1 ]]; then
+    dry "Se validaria sesion sudo con sudo -v"
+    return 0
+  fi
+
+  if [[ $SUDO_AUTH_READY -eq 1 ]]; then
+    return 0
+  fi
+
+  log "Se solicitaran privilegios sudo para configurar display manager."
+  if ! sudo -v; then
+    err "No se pudo autenticar con sudo."
+    return 1
+  fi
+
+  SUDO_AUTH_READY=1
+  return 0
+}
+
+disable_conflicting_display_managers() {
+  local target_service="${1:-sddm.service}"
+  local known_dm_services=(
+    ly.service
+    sddm.service
+    lightdm.service
+    gdm.service
+    lxdm.service
+    xdm.service
+  )
+  local svc
+  local enabled=0
+  local active=0
+
+  for svc in "${known_dm_services[@]}"; do
+    if [[ "$svc" == "$target_service" ]]; then
+      continue
+    fi
+
+    if sudo systemctl is-enabled "$svc" >/dev/null 2>&1; then
+      enabled=1
+    else
+      enabled=0
+    fi
+
+    if sudo systemctl is-active "$svc" >/dev/null 2>&1; then
+      active=1
+    else
+      active=0
+    fi
+
+    if [[ $enabled -eq 1 || $active -eq 1 ]]; then
+      log "Desactivando display manager en conflicto: $svc"
+      if ! sudo systemctl disable --now "$svc"; then
+        warn "No se pudo desactivar completamente: $svc"
+      fi
+    fi
+  done
+}
+
+command_display_manager() {
+  local target_dm_pkg="sddm"
+  local target_dm_service="sddm.service"
+
+  if ! ensure_sudo_session; then
+    return 1
+  fi
+
+  if [[ $SKIP_INSTALL -eq 1 ]]; then
+    warn "Se omite instalación de $target_dm_pkg por --skip-install"
+  else
+    if ! install_missing_dependencies "$target_dm_pkg"; then
+      err "No se pudo instalar $target_dm_pkg."
+      return 1
+    fi
+  fi
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    dry "Se deshabilitarian display managers en conflicto y se habilitaria $target_dm_service"
+    return 0
+  fi
+
+  disable_conflicting_display_managers "$target_dm_service"
+
+  log "Habilitando display manager objetivo: $target_dm_service"
+  if ! sudo systemctl enable "$target_dm_service"; then
+    err "No se pudo habilitar $target_dm_service"
+    return 1
+  fi
+
+  log "Display manager configurado: $target_dm_service"
+}
+
 # Modulos extraidos por dominio.
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/modules/dependencies.sh"
@@ -439,7 +534,7 @@ command_setup() {
   fi
 
   local required_cmds=(sed awk grep cp chmod mkdir)
-  local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git mpd wal)
+  local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git mpd wal sddm)
   local missing=()
   local c
 
@@ -487,6 +582,7 @@ command_setup() {
 
   command_helpers_install
   command_colorscheme
+  command_display_manager
   command_screenlayout
   command_i3_patch
   command_picom_config
@@ -498,7 +594,7 @@ command_setup() {
 }
 
 command_deps_check() {
-  local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git mpd wal)
+  local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git mpd wal sddm)
   local missing=()
 
   mapfile -t missing < <(collect_missing_dependencies "${optional_cmds[@]}")
@@ -523,7 +619,7 @@ command_deps_install() {
   if ((${#SUBCOMMAND_ARGS[@]} > 0)); then
     targets=("${SUBCOMMAND_ARGS[@]}")
   else
-    local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git mpd wal)
+    local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git mpd wal sddm)
     mapfile -t targets < <(collect_missing_dependencies "${optional_cmds[@]}")
   fi
 
@@ -612,6 +708,9 @@ dispatch_command() {
       ;;
     polybar-update)
       command_polybar_update
+      ;;
+    display-manager)
+      command_display_manager
       ;;
     i3-patch)
       command_i3_patch
