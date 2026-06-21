@@ -72,7 +72,8 @@ dst = sys.argv[2]
 
 desired_entries = [
   '  "75:class_g     = '\''Thunar'\''",',
-  '  "75:class_g     = '\''Org.xfce.mousepad'\''"',
+  '  "75:class_g     = '\''Org.xfce.mousepad'\''",',
+  '  "90:class_g     = '\''code'\''"',
 ]
 
 with open(src, 'r', encoding='utf-8') as handle:
