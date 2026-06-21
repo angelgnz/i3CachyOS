@@ -92,3 +92,22 @@ update_i3_autostart_if_exists() {
   cat "$tmp" > "$I3_AUTOSTART"
   rm -f "$tmp"
 }
+
+ensure_xfce4_helpers_terminal() {
+  local xfce4_dir="${XDG_CONFIG_HOME:-$HOME/.config}/xfce4"
+  local helpers_rc="${xfce4_dir}/helpers.rc"
+
+  if [[ -f "$helpers_rc" ]]; then
+    return 0
+  fi
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    dry "Se crearia archivo XFCE helpers: $helpers_rc"
+    return 0
+  fi
+
+  mkdir -p "$xfce4_dir"
+  record_new_file "$helpers_rc"
+  printf 'TerminalEmulator=alacritty\n' > "$helpers_rc"
+  log "Creado archivo XFCE helpers: $helpers_rc"
+}
