@@ -121,7 +121,7 @@ create_multimonitor_layout_if_needed() {
       echo '#!/usr/bin/env bash'
       echo 'set -euo pipefail'
       echo
-      echo 'xrandr \\'
+      echo "xrandr \\"
       printf '%s\n' "${cmd_lines[@]}"
       echo
       echo 'echo "Configuracion multimonitor aplicada automaticamente"'
