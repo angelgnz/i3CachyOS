@@ -46,6 +46,7 @@ Subcomandos:
   helpers-install   Instala/actualiza scripts helper y autostart.
   screenlayout      Genera layout multimonitor cuando aplique.
   picom-config      Aplica solo ajustes de picom.
+  touchpad-config   Configura natural scrolling en touchpad (Xorg/libinput).
   polybar-update    Aplica solo ajustes de polybar shapes.
   i3-patch          Aplica solo binds + bloque gestionado en i3 config.
   backup-list       Lista backups disponibles.
@@ -615,6 +616,8 @@ source "${SCRIPT_DIR}/modules/screenlayout.sh"
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/modules/picom.sh"
 # shellcheck source=/dev/null
+source "${SCRIPT_DIR}/modules/touchpad.sh"
+# shellcheck source=/dev/null
 source "${SCRIPT_DIR}/modules/helpers.sh"
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/modules/polybar.sh"
@@ -798,6 +801,7 @@ command_setup() {
   command_screenlayout
   command_i3_patch
   command_picom_config
+  command_touchpad_config
   command_polybar_update
 
   if [[ $DRY_RUN -eq 0 ]]; then
@@ -926,6 +930,9 @@ dispatch_command() {
       ;;
     picom-config)
       command_picom_config
+      ;;
+    touchpad-config)
+      command_touchpad_config
       ;;
     polybar-update)
       command_polybar_update
