@@ -71,9 +71,9 @@ src = sys.argv[1]
 dst = sys.argv[2]
 
 desired_entries = [
-  '  "75:class_g     = '\''Thunar'\''",',
-  '  "75:class_g     = '\''Org.xfce.mousepad'\''",',
-  '  "90:class_g     = '\''code'\''"',
+  '  "75:class_g     = \'Thunar\'",',
+  '  "75:class_g     = \'Org.xfce.mousepad\'",',
+  '  "90:class_g     = \'code\'"',
 ]
 
 with open(src, 'r', encoding='utf-8') as handle:
@@ -175,65 +175,44 @@ update_picom_blur_exclude() {
   local tmp
   tmp="$(mktemp)"
 
-  awk -v entries='"  \"role = '\''xborder'\''\","|  \"class_g = '\''xborder'\''\","|  \"name = '\''xborder'\''\","' '
-    BEGIN {
-      inblock = 0
-      done = 0
-      n = split(entries, arr, "|")
-    }
-    !done && /blur-background-exclude[[:space:]]*=/ { inblock = 1 }
-    inblock && /\]/ && !done {
-      for (i = 1; i <= n; i++) {
-        found = 0
-        while ((getline line < FILENAME) > 0) { close(FILENAME); break }
-        found = 0
-      }
-      for (i = 1; i <= n; i++) {
-        if (!seen[arr[i]]) {
-          print "  " arr[i] ","
-        }
-      }
-      done = 1
-    }
-    { seen[$0] = 1; print }
-  ' "$candidate" > /dev/null
-
   python3 - "$candidate" "$tmp" <<'PYEOF'
-import sys, re
+import re
+import sys
 
 src = sys.argv[1]
 dst = sys.argv[2]
 
 new_entries = [
-  '  "role = '\''xborder'\''",',
-  '  "class_g = '\''xborder'\''",',
-  '  "name = '\''xborder'\''",',
+  '  "role = \'xborder\'",',
+  '  "class_g = \'xborder\'",',
+  '  "name = \'xborder\'",',
 ]
 
-with open(src, 'r') as f:
+with open(src, 'r', encoding='utf-8') as f:
     content = f.read()
 
-pattern = re.compile(
-    r'(blur-background-exclude\s*=\s*\[)(.*?)(\])',
-    re.DOTALL
-)
+pattern = re.compile(r'(blur-background-exclude\s*=\s*\[)(.*?)(\])', re.DOTALL)
 
-def insert_missing(m):
-    header = m.group(1)
-    body   = m.group(2)
-    footer = m.group(3)
-    for ne in new_entries:
-        key = ne.strip().rstrip(',')
+
+def insert_missing(match):
+    header = match.group(1)
+    body = match.group(2)
+    footer = match.group(3)
+
+    for new_entry in new_entries:
+        key = new_entry.strip().rstrip(',')
         if key not in body:
             body = body.rstrip()
             if body and not body.endswith(','):
                 body += ','
-            body += '\n' + ne + ',\n'
+            body += '\n' + new_entry + '\n'
+
     return header + body + footer
+
 
 new_content = pattern.sub(insert_missing, content, count=1)
 
-with open(dst, 'w') as f:
+with open(dst, 'w', encoding='utf-8') as f:
     f.write(new_content)
 PYEOF
 

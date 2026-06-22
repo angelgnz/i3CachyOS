@@ -4,7 +4,7 @@ dependency_available() {
   local dep="$1"
 
   case "$dep" in
-    polybar-themes-git)
+    polybar-themes-git|themix-full-git)
       if command_exists yay; then
         yay -Qq "$dep" >/dev/null 2>&1
       elif command_exists paru; then
@@ -152,7 +152,7 @@ install_missing_dependencies() {
 
   for pkg in "${unique_packages[@]}"; do
     case "$pkg" in
-      polybar-themes-git|pixie-sddm-git)
+      polybar-themes-git|pixie-sddm-git|themix-full-git)
         aur_packages+=("$pkg")
         ;;
       *)
