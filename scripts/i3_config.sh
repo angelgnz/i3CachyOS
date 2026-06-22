@@ -26,6 +26,7 @@ SKIP_INSTALL=0
 NON_INTERACTIVE=0
 REVERT=0
 DRY_RUN=0
+ONLY_POLYBAR_COLOR=0
 COMMAND="setup"
 SUBCOMMAND_ARGS=()
 
@@ -56,6 +57,7 @@ Opciones:
   --yes            Ejecutar sin preguntas interactivas (continua sin instalar faltantes).
   --revert         Revierte los cambios usando el ultimo backup.
   --dry-run        Simula cambios sin modificar archivos ni instalar paquetes.
+  --only-polybar-color Ejecuta solo el cambiador de color de Polybar (sin setup extra).
   -h, --help       Muestra esta ayuda.
 EOF
 }
@@ -81,6 +83,10 @@ while (($# > 0)); do
       ;;
     --dry-run)
       DRY_RUN=1
+      shift
+      ;;
+    --only-polybar-color)
+      ONLY_POLYBAR_COLOR=1
       shift
       ;;
     -h|--help)
@@ -722,6 +728,11 @@ EOF
 }
 
 command_setup() {
+  if [[ $ONLY_POLYBAR_COLOR -eq 1 ]]; then
+    apply_pywal_polybar_dark_colorscheme
+    return 0
+  fi
+
   if [[ $DRY_RUN -eq 1 ]]; then
     log "Modo dry-run activo: no se realizaran cambios reales."
   fi
@@ -850,11 +861,17 @@ command_alacritty() {
 }
 
 command_colorscheme() {
+  if [[ $ONLY_POLYBAR_COLOR -eq 1 ]]; then
+    apply_pywal_polybar_dark_colorscheme
+    return 0
+  fi
+
   local wallpaper_dir
   wallpaper_dir="$(copy_wallpapers)"
 
   ensure_wal_alacritty_template
   regenerate_wal_cache "$wallpaper_dir"
+  apply_pywal_polybar_dark_colorscheme
   ensure_alacritty_wal_import
 }
 

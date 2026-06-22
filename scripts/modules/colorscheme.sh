@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 
 ALACRITTY_BASE_COLORS_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/alacritty/colors-base.toml"
+WAL_CACHE_JSON="${XDG_CACHE_HOME:-$HOME/.cache}/wal/colors.json"
+WAL_CACHE_SH="${XDG_CACHE_HOME:-$HOME/.cache}/wal/colors.sh"
+POLYBAR_SHAPES_SCRIPTS_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/polybar/shapes/scripts"
 
 detect_wallpaper_dir() {
   local d1="$HOME/Images/wallpapers"
@@ -138,6 +141,173 @@ regenerate_wal_cache() {
     log "Cache de wal regenerada usando: $wallpaper_dir"
   else
     warn "wal no pudo regenerar la cache con: $wallpaper_dir"
+  fi
+}
+
+get_pywal_seed_color() {
+  if [[ -f "$WAL_CACHE_JSON" ]]; then
+    python3 - "$WAL_CACHE_JSON" <<'PYEOF'
+import json
+import sys
+
+path = sys.argv[1]
+
+try:
+    with open(path, 'r', encoding='utf-8') as handle:
+        data = json.load(handle)
+except Exception:
+    raise SystemExit(1)
+
+colors = data.get('colors', {}) if isinstance(data, dict) else {}
+for key in ('color4', 'color2', 'color1'):
+    value = colors.get(key)
+    if isinstance(value, str) and value.startswith('#'):
+        print(value)
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PYEOF
+    return $?
+  fi
+
+  if [[ -f "$WAL_CACHE_SH" ]]; then
+    local line
+    for line in color4 color2 color1; do
+      local value
+      value="$(sed -n "s/^${line}='\(#.*\)'$/\1/p" "$WAL_CACHE_SH" | head -n 1)"
+      if [[ -n "$value" ]]; then
+        echo "$value"
+        return 0
+      fi
+    done
+  fi
+
+  return 1
+}
+
+map_hex_to_polybar_color_name() {
+  local hex="$1"
+
+  python3 - "$hex" <<'PYEOF'
+import colorsys
+import sys
+
+hex_color = sys.argv[1].strip().lower()
+
+if not hex_color.startswith('#'):
+    raise SystemExit(1)
+
+hex_color = hex_color[1:]
+if len(hex_color) == 3:
+    hex_color = ''.join(ch * 2 for ch in hex_color)
+if len(hex_color) != 6:
+    raise SystemExit(1)
+
+try:
+    r = int(hex_color[0:2], 16) / 255.0
+    g = int(hex_color[2:4], 16) / 255.0
+    b = int(hex_color[4:6], 16) / 255.0
+except ValueError:
+    raise SystemExit(1)
+
+h, s, v = colorsys.rgb_to_hsv(r, g, b)
+
+# Tonos muy poco saturados se mapean directo a gris.
+if s < 0.08:
+    print('gray')
+    raise SystemExit(0)
+
+# Prototipos Material para coincidencia por HSV.
+palette = {
+    'red': '#F44336',
+    'pink': '#E91E63',
+    'purple': '#9C27B0',
+    'deep-purple': '#673AB7',
+    'indigo': '#3F51B5',
+    'blue': '#2196F3',
+    'light-blue': '#03A9F4',
+    'cyan': '#00BCD4',
+    'teal': '#009688',
+    'green': '#4CAF50',
+    'light-green': '#8BC34A',
+    'lime': '#CDDC39',
+    'yellow': '#FFEB3B',
+    'amber': '#FFC107',
+    'orange': '#FF9800',
+    'deep-orange': '#FF5722',
+    'brown': '#795548',
+    'blue-gray': '#607D8B',
+    'gray': '#9E9E9E',
+}
+
+
+def hsv_from_hex(value: str):
+    value = value.lstrip('#')
+    rr = int(value[0:2], 16) / 255.0
+    gg = int(value[2:4], 16) / 255.0
+    bb = int(value[4:6], 16) / 255.0
+    return colorsys.rgb_to_hsv(rr, gg, bb)
+
+
+target = (h, s, v)
+best_name = 'blue'
+best_score = float('inf')
+
+for name, proto in palette.items():
+    ph, ps, pv = hsv_from_hex(proto)
+    hd = abs((target[0] - ph) * 360.0)
+    hd = min(hd, 360.0 - hd)
+    sd = abs(target[1] - ps)
+    vd = abs(target[2] - pv)
+    score = (hd / 180.0) ** 2 + (sd * 1.4) ** 2 + (vd * 0.7) ** 2
+
+    # Evitar tonos desaturados salvo que el color objetivo tambien lo sea.
+    if target[1] >= 0.20 and name in {'gray', 'brown', 'blue-gray'}:
+        score += 0.35
+
+    if score < best_score:
+        best_score = score
+        best_name = name
+
+print(best_name)
+PYEOF
+}
+
+apply_pywal_polybar_dark_colorscheme() {
+  local script_path="${POLYBAR_SHAPES_SCRIPTS_DIR}/colors-dark.sh"
+
+  if [[ ! -f "$script_path" ]]; then
+    warn "No existe script de Polybar dark: $script_path"
+    return 0
+  fi
+
+  if ! command_exists python3; then
+    warn "python3 no disponible. Se omite traduccion pywal -> Polybar."
+    return 0
+  fi
+
+  local seed_color
+  if ! seed_color="$(get_pywal_seed_color)"; then
+    warn "No se pudo obtener color de pywal (colors.json/colors.sh)."
+    return 0
+  fi
+
+  local color_name
+  if ! color_name="$(map_hex_to_polybar_color_name "$seed_color")"; then
+    warn "No se pudo mapear color pywal a nombre de Polybar: $seed_color"
+    return 0
+  fi
+
+  local arg="--${color_name}"
+  if [[ $DRY_RUN -eq 1 ]]; then
+    dry "Se aplicaria color Polybar (dark) desde pywal: $seed_color -> $arg"
+    return 0
+  fi
+
+  if bash "$script_path" "$arg"; then
+    log "Color Polybar dark aplicado desde pywal: $seed_color -> $arg"
+  else
+    warn "Fallo al aplicar color Polybar dark con: $arg"
   fi
 }
 
