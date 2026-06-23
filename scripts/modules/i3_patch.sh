@@ -1,27 +1,32 @@
 #!/usr/bin/env bash
 
 ensure_steam_settings_floating_rule() {
-  local steam_rule='for_window [title="Steam Settings"] floating enable'
+  local steam_rules=(
+    'for_window [title="Steam Settings"] floating enable'
+    'for_window [title="Configuraciones de.*Steam"] floating enable'
+  )
+  local rule
 
-  if grep -Fxq "$steam_rule" "$I3_CONFIG"; then
-    return 0
-  fi
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    if grep -Eq 'floating[[:space:]]+enable' "$I3_CONFIG"; then
-      dry "Se agregaria regla de Steam Settings despues del ultimo floating enable en: $I3_CONFIG"
-    else
-      dry "No se encontro floating enable en: $I3_CONFIG; se agregaria regla de Steam Settings al final"
+  for rule in "${steam_rules[@]}"; do
+    if grep -Fxq "$rule" "$I3_CONFIG"; then
+      continue
     fi
-    return 0
-  fi
 
-  backup_file_once "$I3_CONFIG"
+    if [[ $DRY_RUN -eq 1 ]]; then
+      if grep -Eq 'floating[[:space:]]+enable' "$I3_CONFIG"; then
+        dry "Se agregaria regla de Steam Settings despues del ultimo floating enable en: $I3_CONFIG"
+      else
+        dry "No se encontro floating enable en: $I3_CONFIG; se agregaria regla de Steam Settings al final"
+      fi
+      continue
+    fi
 
-  local tmp
-  tmp="$(mktemp)"
+    backup_file_once "$I3_CONFIG"
 
-  awk -v steam_rule="$steam_rule" '
+    local tmp
+    tmp="$(mktemp)"
+
+    awk -v steam_rule="$rule" '
     {
       lines[NR] = $0
       if ($0 ~ /floating[[:space:]]+enable/) {
@@ -45,10 +50,11 @@ ensure_steam_settings_floating_rule() {
         print steam_rule
       }
     }
-  ' "$I3_CONFIG" > "$tmp"
+    ' "$I3_CONFIG" > "$tmp"
 
-  cat "$tmp" > "$I3_CONFIG"
-  rm -f "$tmp"
+    cat "$tmp" > "$I3_CONFIG"
+    rm -f "$tmp"
+  done
 
   log "Regla Steam Settings agregada en: $I3_CONFIG"
 }
