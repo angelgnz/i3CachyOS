@@ -1,5 +1,58 @@
 #!/usr/bin/env bash
 
+ensure_steam_settings_floating_rule() {
+  local steam_rule='for_window [title="Steam Settings"] floating enable'
+
+  if grep -Fxq "$steam_rule" "$I3_CONFIG"; then
+    return 0
+  fi
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    if grep -Eq 'floating[[:space:]]+enable' "$I3_CONFIG"; then
+      dry "Se agregaria regla de Steam Settings despues del ultimo floating enable en: $I3_CONFIG"
+    else
+      dry "No se encontro floating enable en: $I3_CONFIG; se agregaria regla de Steam Settings al final"
+    fi
+    return 0
+  fi
+
+  backup_file_once "$I3_CONFIG"
+
+  local tmp
+  tmp="$(mktemp)"
+
+  awk -v steam_rule="$steam_rule" '
+    {
+      lines[NR] = $0
+      if ($0 ~ /floating[[:space:]]+enable/) {
+        last_floating = NR
+      }
+    }
+    END {
+      if (NR == 0) {
+        print steam_rule
+        exit
+      }
+
+      for (i = 1; i <= NR; i++) {
+        print lines[i]
+        if (i == last_floating) {
+          print steam_rule
+        }
+      }
+
+      if (last_floating == 0) {
+        print steam_rule
+      }
+    }
+  ' "$I3_CONFIG" > "$tmp"
+
+  cat "$tmp" > "$I3_CONFIG"
+  rm -f "$tmp"
+
+  log "Regla Steam Settings agregada en: $I3_CONFIG"
+}
+
 command_i3_patch() {
   ensure_i3_config_exists
 
@@ -93,6 +146,8 @@ command_i3_patch() {
     sed -E -i '/^[[:space:]]*#exec feh --bg-fill ~\/\.config\/i3\/wallpaper\.png[[:space:]]*$/d' "$I3_CONFIG"
     sed -E -i '/^[[:space:]]*exec_always[[:space:]]+--no-startup-id[[:space:]]+~\/\.config\/polybar\/launch\.sh([[:space:]]+--shapes)?[[:space:]]*$/d' "$I3_CONFIG"
   fi
+
+  ensure_steam_settings_floating_rule
 
   local managed_block
   managed_block="$(cat <<EOF
