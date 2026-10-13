@@ -910,6 +910,7 @@ command_picom_config() {
 }
 
 command_polybar_update() {
+  ensure_polybar_current_theme
   ensure_polybar_shapes_tray_module
   ensure_polybar_shapes_modules_right_tray
 }

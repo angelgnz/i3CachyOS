@@ -70,3 +70,25 @@ ensure_polybar_shapes_modules_right_tray() {
   sed -E -i '/^modules-right[[:space:]]*=/ s/\bcolor-switch\b/tray/g' "$target"
   log "Reemplazado color-switch por tray en modules-right: $target"
 }
+
+ensure_polybar_current_theme() {
+  local polybar_dir="${XDG_CONFIG_HOME:-$HOME/.config}/polybar"
+  local target="${polybar_dir}/.current_theme"
+
+  if [[ -f "$target" ]]; then
+    return 0
+  fi
+
+  if [[ ! -d "$polybar_dir" ]]; then
+    return 0
+  fi
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    dry "Se inicializaria tema actual de Polybar (shapes) en: $target"
+    return 0
+  fi
+
+  printf '%s\n' "shapes" > "$target"
+  log "Tema actual de Polybar inicializado en: $target (shapes)"
+}
+

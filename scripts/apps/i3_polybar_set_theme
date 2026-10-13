@@ -88,6 +88,11 @@ fi
 
 printf '%s\n' "$theme" > "$CURRENT_THEME_FILE"
 
+i3_config="${HOME}/.config/i3/config"
+if [[ -f "$i3_config" ]]; then
+  sed -E -i "s|(~?/\.config/polybar/launch\.sh[[:space:]]+--)[a-zA-Z0-9_-]+|\1${theme}|g" "$i3_config" 2>/dev/null || true
+fi
+
 if [[ "$theme" == "panels" ]]; then
   printf '%s\n' "$panel_variant" > "$CURRENT_PANEL_FILE"
 else
