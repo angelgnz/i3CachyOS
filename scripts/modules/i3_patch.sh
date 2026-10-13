@@ -94,6 +94,22 @@ command_i3_patch() {
     sed -E -i '/^[[:space:]]*exec_always[[:space:]]+--no-startup-id[[:space:]]+~\/\.config\/polybar\/launch\.sh([[:space:]]+--shapes)?[[:space:]]*$/d' "$I3_CONFIG"
   fi
 
+  if grep -Eq '^[[:space:]]*bindsym[[:space:]]+\$mod\+p[[:space:]]+' "$I3_CONFIG"; then
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se comentaria bindsym \$mod+p en $I3_CONFIG"
+    else
+      sed -E -i 's/^[[:space:]]*bindsym[[:space:]]+\$mod\+p[[:space:]]+/#bindsym $mod+p /' "$I3_CONFIG"
+    fi
+  fi
+
+  if grep -Eq '^[[:space:]]*bindsym[[:space:]]+\$mod\+Shift\+p[[:space:]]+' "$I3_CONFIG"; then
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se comentaria bindsym \$mod+Shift+p en $I3_CONFIG"
+    else
+      sed -E -i 's/^[[:space:]]*bindsym[[:space:]]+\$mod\+Shift\+p[[:space:]]+/#bindsym $mod+Shift+p /' "$I3_CONFIG"
+    fi
+  fi
+
   local managed_block
   managed_block="$(cat <<EOF
 # Scripts auxiliares
@@ -128,6 +144,11 @@ set \$i3l spiral to workspace 0
 
 # Configuracion de wallpaper
 exec --no-startup-id setwallpaper "/home/angel/Images/wallpapers/edger_lucy_neon-16-9.jpg" --mode span
+
+# Configuracion de Flameshot
+exec --no-startup-id flameshot
+bindsym \$mod+p exec flameshot full -c
+bindsym \$mod+Shift+p exec flameshot gui
 EOF
 )"
 

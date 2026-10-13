@@ -29,7 +29,8 @@ Script de personalizacion de i3wm en CachyOS con CLI por subcomandos.
   - `~/.config/i3/scripts/i3_cloud_storage`
 - Copia todos los wallpapers de `wallpapers/` a:
   - `~/Images/wallpapers` o `~/Imágenes/wallpapers`.
-- Detecta multimonitor automaticamente con `xrandr` y crea `~/.screenlayout/pantallas.sh` cuando hay 2+ pantallas.
+- Detecta pantallas y si es laptop (eDP/LVDS) calcula su densidad (DPI) y aplica fractional scaling con `xrandr` (configurable con `--laptop-scale`).
+- Genera layout de pantalla en `~/.screenlayout/pantallas.sh` adaptando resoluciones y posiciones lógicas.
 - Aplica cambios idempotentes en `~/.config/i3/config` usando un bloque gestionado.
 - Intenta ajustar `corner-radius = 12` en `picom.conf` dentro del bloque `#-cr-start` / `#-cr-end`.
 - Inserta autostart de helpers en `~/.config/i3/scripts/i3_autostart` si el archivo existe.
@@ -111,6 +112,7 @@ Opciones globales:
 - `--skip-install`: no intenta instalar faltantes.
 - `--yes`: no interactivo, continua sin instalar faltantes.
 - `--dry-run`: simula cambios sin tocar archivos ni instalar paquetes.
+- `--laptop-scale SCALE`: factor de escala para pantalla de laptop (ej. `1.25`, `1.33`, `1.5`, `1.0`, `auto`).
 - `--revert`: restaura el ultimo backup (equivalente a `revert`).
 
 ### Display manager y sudo

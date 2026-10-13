@@ -27,6 +27,7 @@ NON_INTERACTIVE=0
 REVERT=0
 DRY_RUN=0
 ONLY_POLYBAR_COLOR=0
+LAPTOP_SCALE="${LAPTOP_SCALE:-auto}"
 COMMAND="setup"
 SUBCOMMAND_ARGS=()
 
@@ -44,7 +45,7 @@ Subcomandos:
   alacritty         Aplica solo plantilla/import de pywal en Alacritty.
   colorscheme       Ejecuta flujo de wallpapers + pywal + Alacritty.
   helpers-install   Instala/actualiza scripts helper y autostart.
-  screenlayout      Genera layout multimonitor cuando aplique.
+  screenlayout      Genera layout de pantalla (con scaling de laptop si aplica).
   picom-config      Aplica solo ajustes de picom.
   touchpad-config   Configura natural scrolling en touchpad (Xorg/libinput).
   polybar-update    Aplica solo ajustes de polybar shapes.
@@ -59,6 +60,7 @@ Opciones:
   --revert         Revierte los cambios usando el ultimo backup.
   --dry-run        Simula cambios sin modificar archivos ni instalar paquetes.
   --only-polybar-color Ejecuta solo el cambiador de color de Polybar (sin setup extra).
+  --laptop-scale SCALE Escala para monitor de laptop (ej. 1.25, 1.33, 1.5, auto, 1.0).
   -h, --help       Muestra esta ayuda.
 EOF
 }
@@ -90,6 +92,14 @@ while (($# > 0)); do
       ONLY_POLYBAR_COLOR=1
       shift
       ;;
+    --laptop-scale)
+      LAPTOP_SCALE="$2"
+      shift 2
+      ;;
+    --laptop-scale=*)
+      LAPTOP_SCALE="${1#*=}"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -100,6 +110,8 @@ while (($# > 0)); do
       ;;
   esac
 done
+
+export LAPTOP_SCALE
 
 log() { echo "[INFO] $*"; }
 warn() { echo "[WARN] $*" >&2; }
@@ -749,7 +761,7 @@ command_setup() {
   fi
 
   local required_cmds=(sed awk grep cp chmod mkdir)
-  local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git themix-full-git mpd wal sddm mousepad thunar)
+  local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git themix-full-git mpd wal sddm mousepad thunar flameshot)
   local missing=()
   local c
 
@@ -810,7 +822,7 @@ command_setup() {
 }
 
 command_deps_check() {
-  local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git themix-full-git mpd wal sddm mousepad thunar)
+  local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git themix-full-git mpd wal sddm mousepad thunar flameshot)
   local missing=()
 
   mapfile -t missing < <(collect_missing_dependencies "${optional_cmds[@]}")
@@ -835,7 +847,7 @@ command_deps_install() {
   if ((${#SUBCOMMAND_ARGS[@]} > 0)); then
     targets=("${SUBCOMMAND_ARGS[@]}")
   else
-    local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git themix-full-git mpd wal sddm mousepad thunar)
+    local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git themix-full-git mpd wal sddm mousepad thunar flameshot)
     mapfile -t targets < <(collect_missing_dependencies "${optional_cmds[@]}")
   fi
 
@@ -887,7 +899,7 @@ command_helpers_install() {
 
 command_screenlayout() {
   ensure_i3_config_exists
-  create_multimonitor_layout_if_needed >/dev/null
+  create_multimonitor_layout_if_needed
 }
 
 command_picom_config() {
