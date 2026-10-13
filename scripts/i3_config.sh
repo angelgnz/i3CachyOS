@@ -761,7 +761,7 @@ command_setup() {
   fi
 
   local required_cmds=(sed awk grep cp chmod mkdir)
-  local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git themix-full-git mpd wal sddm mousepad thunar flameshot)
+  local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git themix-full-git mpd wal sddm mousepad thunar thunar-archive-plugin flameshot)
   local missing=()
   local c
 
@@ -822,7 +822,7 @@ command_setup() {
 }
 
 command_deps_check() {
-  local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git themix-full-git mpd wal sddm mousepad thunar flameshot)
+  local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git themix-full-git mpd wal sddm mousepad thunar thunar-archive-plugin flameshot)
   local missing=()
 
   mapfile -t missing < <(collect_missing_dependencies "${optional_cmds[@]}")
@@ -847,7 +847,7 @@ command_deps_install() {
   if ((${#SUBCOMMAND_ARGS[@]} > 0)); then
     targets=("${SUBCOMMAND_ARGS[@]}")
   else
-    local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git themix-full-git mpd wal sddm mousepad thunar flameshot)
+    local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git themix-full-git mpd wal sddm mousepad thunar thunar-archive-plugin flameshot)
     mapfile -t targets < <(collect_missing_dependencies "${optional_cmds[@]}")
   fi
 

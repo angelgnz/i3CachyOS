@@ -4,7 +4,7 @@ dependency_available() {
   local dep="$1"
 
   case "$dep" in
-    polybar-themes-git|themix-full-git)
+    polybar-themes-git|themix-full-git|thunar-archive-plugin)
       if command_exists yay; then
         yay -Qq "$dep" >/dev/null 2>&1
       elif command_exists paru; then
