@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+POLYBAR_DIR="${HOME}/.config/polybar"
 
 THEME_HELPER=""
 for candidate in \
@@ -23,20 +24,35 @@ if [[ -z "$THEME_HELPER" ]]; then
   exit 1
 fi
 
-theme="$(printf '%s\n' \
-  blocks \
-  colorblocks \
-  cuts \
-  docky \
-  forest \
-  grayblocks \
-  hack \
-  material \
-  panels \
-  pwidgets \
-  shades \
-  shapes \
-  | rofi -dmenu -i -p 'Polybar theme')"
+ALL_THEMES=(
+  blocks
+  colorblocks
+  cuts
+  docky
+  forest
+  grayblocks
+  hack
+  material
+  panels
+  pwidgets
+  shades
+  shapes
+)
+
+AVAILABLE_THEMES=()
+if [[ -d "$POLYBAR_DIR" ]]; then
+  for candidate in "${ALL_THEMES[@]}"; do
+    if [[ -d "${POLYBAR_DIR}/${candidate}" ]]; then
+      AVAILABLE_THEMES+=("$candidate")
+    fi
+  done
+fi
+
+if ((${#AVAILABLE_THEMES[@]} == 0)); then
+  AVAILABLE_THEMES=("${ALL_THEMES[@]}")
+fi
+
+theme="$(printf '%s\n' "${AVAILABLE_THEMES[@]}" | rofi -dmenu -i -p 'Polybar theme' || true)"
 
 if [[ -z "$theme" ]]; then
   exit 0
@@ -57,7 +73,7 @@ if [[ "$theme" == "panels" ]]; then
     --unity \
     --xubuntu \
     --zorin \
-    | rofi -dmenu -i -p 'Panels variant')"
+    | rofi -dmenu -i -p 'Panels variant' || true)"
 
   if [[ -z "$variant" ]]; then
     exit 0

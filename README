@@ -6,33 +6,41 @@ Script de personalizacion de i3wm en CachyOS con CLI por subcomandos.
 
 - `scripts/i3_config.sh`: script principal (dispatcher CLI).
 - `scripts/modules/dependencies.sh`: funciones de deteccion/instalacion de dependencias.
-- `scripts/modules/colorscheme.sh`: funciones de wallpapers + pywal + Alacritty.
-- `scripts/modules/screenlayout.sh`: generacion y verificacion de layout multimonitor.
+- `scripts/modules/colorscheme.sh`: funciones de wallpapers + pywal + Alacritty + traduccion de color a Polybar.
+- `scripts/modules/display_manager.sh`: instalacion/activacion de SDDM y personalizacion del tema Pixie.
+- `scripts/modules/screenlayout.sh`: generacion y verificacion de layout de pantalla (1 o multiples monitores).
 - `scripts/modules/picom.sh`: ajustes de `picom.conf`.
-- `scripts/modules/helpers.sh`: instalacion de helpers y parcheo de `i3_autostart`.
-- `scripts/modules/polybar.sh`: ajustes de polybar shapes.
+- `scripts/modules/touchpad.sh`: configuracion de natural scrolling en `/etc/X11/xorg.conf.d/30-touchpad.conf`.
+- `scripts/modules/helpers.sh`: instalacion de helpers, parcheo de `i3_autostart` y configuracion de terminal XFCE.
+- `scripts/modules/polybar.sh`: ajustes de polybar `shapes`.
 - `scripts/modules/i3_patch.sh`: parcheo idempotente de `i3/config`.
-- `scripts/apps/i3_nzxt`: helper para iniciar NZXT si existe.
-- `scripts/apps/i3_cloud_storage`: helper para iniciar Overgrive/Nextcloud.
-- `scripts/apps/i3_rofi_apps`: helper para abrir Rofi solo con aplicaciones (`drun`).
+- `scripts/apps/i3_nzxt`: helper para configurar NZXT (`liquidctl`) si existe.
+- `scripts/apps/i3_cloud_storage`: helper para iniciar Overgrive/Nextcloud en segundo plano.
+- `scripts/apps/i3_rofi_apps`: helper para abrir Rofi adaptado al tema activo de Polybar (`drun` como fallback).
+- `scripts/apps/i3_polybar_set_theme`: helper para cambiar el tema activo de Polybar o relanzar el actual con `--current`.
+- `scripts/apps/i3_rofi_polybar_theme`: selector interactivo en Rofi para cambiar el tema de Polybar (`$mod+Shift+t`).
+- `scripts/apps/i3_rofi_powermenu`: menu de sesion/apagado adaptado al tema activo de Polybar (`i3-nagbar` como fallback).
+- `scripts/apps/i3_wallpaper`: selecciona y aplica el mejor wallpaper por monitor segun aspect ratio y resolucion usando `feh --bg-fill` (con `setwallpaper` como fallback).
 - `wallpapers/`: wallpapers fuente del repositorio (se copian todos).
+- `avatar/`: imagen opcional para reemplazar `/usr/share/sddm/themes/pixie/assets/avatar.jpg`.
 
 ## Que hace
 
-- Detecta dependencias usadas por el flujo (`rofi`, `picom`, `xrandr`, `xborders`, `i3-layouts`, `setwallpaper`).
+- Detecta dependencias usadas por el flujo (`rofi`, `picom`, `xrandr`, `feh`, `xborder-git`, `i3-layouts`, `wallutils`, `python`, `nextcloud`, `kwallet-pam`, `polybar-themes-git`, `themix-full-git`, `mpd`, `wal`, `sddm`, `mousepad`, `thunar`, `thunar-archive-plugin`).
 - Si faltan, permite elegir:
   - instalar,
   - continuar sin instalar,
   - detener el script.
-- Copia los helpers al destino de i3:
-  - `~/.config/i3/scripts/i3_nzxt`
-  - `~/.config/i3/scripts/i3_cloud_storage`
-- Copia todos los wallpapers de `wallpapers/` a:
-  - `~/Images/wallpapers` o `~/Imágenes/wallpapers`.
-- Detecta multimonitor automaticamente con `xrandr` y crea `~/.screenlayout/pantallas.sh` cuando hay 2+ pantallas.
-- Aplica cambios idempotentes en `~/.config/i3/config` usando un bloque gestionado.
-- Intenta ajustar `corner-radius = 12` en `picom.conf` dentro del bloque `#-cr-start` / `#-cr-end`.
-- Inserta autostart de helpers en `~/.config/i3/scripts/i3_autostart` si el archivo existe.
+- Copia los 7 helpers de `scripts/apps/` a `~/.config/i3/scripts/`:
+  - `i3_nzxt`, `i3_cloud_storage`, `i3_rofi_apps`, `i3_polybar_set_theme`, `i3_rofi_polybar_theme`, `i3_rofi_powermenu`, `i3_wallpaper`.
+- Inserta autostart de `i3_nzxt` e `i3_cloud_storage` en `~/.config/i3/scripts/i3_autostart` si el archivo existe (en caso contrario los lanza desde `i3/config`), y crea `~/.config/xfce4/helpers.rc` con `TerminalEmulator=alacritty` si no existe.
+- Copia todos los wallpapers de `wallpapers/` a `~/Images/wallpapers` o `~/Imágenes/wallpapers`, regenera la cache con `wal -i`, instala la plantilla de Alacritty para `pywal`, extrae bloques `[colors.*]` a `colors-base.toml` con `import` y aplica el tono Material equivalente en Polybar `shapes` (`colors-dark.sh`).
+- Configura SDDM (`sddm` y `pixie-sddm-git`), activa `[Theme] Current=pixie` en `/etc/sddm.conf`, actualiza fondo y avatar de Pixie y desactiva display managers en conflicto.
+- Detecta pantallas con `xrandr` (1 o multiples monitores) y genera o actualiza `~/.screenlayout/pantallas.sh` con la resolucion nativa, la mayor tasa de refresco disponible (`--rate`), el monitor primario de mayor area, `--off` para salidas desconectadas que sigan activas y reajuste automatico de wallpaper mediante `i3_wallpaper`.
+- Aplica cambios idempotentes en `~/.config/i3/config`: atajos (`$mod+a`, `$mod+Shift+e`, `$mod+x`, `$mod+Shift+t`), `border pixel 0`, reglas `floating enable` para Steam Settings (ingles y espanol), y el bloque gestionado (`kwalletd6`, `gsettings` dark, `pantallas.sh`, `i3_polybar_set_theme --current`, `gaps inner ${I3_GAP_SIZE}`, `xborders`, `i3-layouts` y `i3_wallpaper`).
+- Ajusta `picom.conf`: `corner-radius = 12;` en `#-cr-start` / `#-cr-end`, reglas en `opacity-rule` (`Thunar`, `Org.xfce.mousepad`, `code`), entradas `xborder` en `blur-background-exclude` y comenta `refresh-rate = 0`.
+- Configura `NaturalScrolling "True"` para touchpads en `/etc/X11/xorg.conf.d/30-touchpad.conf`.
+- Agrega `[module/tray]` y reemplaza `color-switch` por `tray` en `polybar/shapes`.
 
 ## Reversibilidad
 
@@ -40,7 +48,7 @@ Antes de modificar, guarda backups en:
 
 - `~/.config/i3/.cachyos-i3-backups/<timestamp>/`
 
-Se crea un manifiesto con archivos restaurables y archivos nuevos creados.
+Se crea un manifiesto con archivos restaurables y archivos nuevos creados (incluyendo archivos del sistema bajo `/etc` y `/usr/share` usando `sudo` al revertir).
 
 Para revertir el ultimo cambio aplicado:
 
@@ -51,7 +59,7 @@ Para revertir el ultimo cambio aplicado:
 ## Uso
 
 ```bash
-chmod +x scripts/i3_config.sh scripts/apps/i3_nzxt scripts/apps/i3_cloud_storage scripts/apps/i3_rofi_apps
+chmod +x scripts/i3_config.sh scripts/apps/*
 ./scripts/i3_config.sh setup
 ```
 
@@ -62,15 +70,16 @@ Tambien puedes ejecutar `./scripts/i3_config.sh` sin subcomando y se comporta co
 - `setup`: flujo completo.
 - `deps-check`: muestra dependencias opcionales faltantes.
 - `deps-install [dep ...]`: instala faltantes o solo las dependencias indicadas.
-- `display-manager`: instala `sddm`, desactiva display managers en conflicto (incluye `ly`) y habilita `sddm.service`.
+- `display-manager`: instala `sddm`, configura tema `pixie`, desactiva display managers en conflicto (incluye `ly`) y habilita `sddm.service`.
 - `wal [DIR]`: regenera pywal (usa `DIR` o wallpapers detectados).
 - `alacritty`: aplica solo template/import de pywal para Alacritty.
-- `colorscheme`: wallpapers + pywal + Alacritty.
-- `helpers-install`: instala/actualiza helpers y autostart.
-- `screenlayout`: genera layout multimonitor si aplica.
+- `colorscheme`: wallpapers + pywal + Polybar dark + Alacritty.
+- `helpers-install`: instala/actualiza helpers, `i3_autostart` y `xfce4/helpers.rc`.
+- `screenlayout`: genera o actualiza el layout de pantalla (1 o multiples monitores).
 - `picom-config`: aplica ajustes de picom.
-- `polybar-update`: aplica ajustes de polybar shapes.
-- `i3-patch`: aplica binds y bloque gestionado en `i3/config`.
+- `touchpad-config`: configura `NaturalScrolling` en `/etc/X11/xorg.conf.d/30-touchpad.conf`.
+- `polybar-update`: aplica ajustes de polybar `shapes`.
+- `i3-patch`: aplica binds, reglas y bloque gestionado en `i3/config`.
 - `backup-list`: lista backups guardados con timestamp.
 - `backup-restore [ID|latest|MANIFEST]`: restaura por timestamp, latest o ruta de manifiesto.
 - `revert`: restaura desde el ultimo backup.
@@ -87,10 +96,14 @@ Ejemplos:
 # Solo pywal + Alacritty
 ./scripts/i3_config.sh colorscheme
 
+# Aplicar solo el color de pywal a Polybar
+./scripts/i3_config.sh colorscheme --only-polybar-color
+
 # Solo configurar display manager (migracion LY -> SDDM)
 ./scripts/i3_config.sh display-manager
 
-# Solo parche de i3 config
+# Solo parche de i3 config (flags validos antes o despues del subcomando)
+./scripts/i3_config.sh --dry-run i3-patch
 ./scripts/i3_config.sh i3-patch --dry-run
 
 # Listar backups disponibles
@@ -106,22 +119,24 @@ Para usar launcher de solo aplicaciones en i3 (atajo `$mod+a`):
 bindsym $mod+a exec "~/.config/i3/scripts/i3_rofi_apps"
 ```
 
-Opciones globales:
+Opciones globales (pueden pasarse antes o despues del subcomando):
 
 - `--skip-install`: no intenta instalar faltantes.
 - `--yes`: no interactivo, continua sin instalar faltantes.
 - `--dry-run`: simula cambios sin tocar archivos ni instalar paquetes.
 - `--revert`: restaura el ultimo backup (equivalente a `revert`).
+- `--only-polybar-color`: ejecuta solo el cambiador de color de Polybar desde `pywal`.
 
 ### Display manager y sudo
 
-- El flujo `setup` ahora incluye fase de display manager.
+- El flujo `setup` incluye fase de display manager.
 - Se valida `sudo` una sola vez al inicio de esa fase (`sudo -v`).
 - Se instala `sddm` con fallback automatico de gestor: `yay` -> `paru` -> `sudo pacman`.
+- Se configura `[Theme] Current=pixie` en `/etc/sddm.conf`.
 - Despues de instalar `pixie-sddm-git`, el script reemplaza `city.jpg` del repo sobre `/usr/share/sddm/themes/pixie/assets/background.jpg` (sin editar `theme.conf`).
 - Si existe una imagen en `avatar/` del repo (`.jpg`, `.jpeg`, `.png`, `.webp`), tambien reemplaza `/usr/share/sddm/themes/pixie/assets/avatar.jpg` con la primera imagen encontrada.
 - Para evitar conflictos, se desactivan display managers activos conocidos (`ly`, `lightdm`, `gdm`, `lxdm`, `xdm`) antes de habilitar `sddm.service`.
 
 ## Nota
 
-El script esta pensado para ser idempotente: volver a ejecutarlo no duplica el bloque gestionado en `i3/config`.
+El script esta pensado para ser idempotente: volver a ejecutarlo no duplica el bloque gestionado en `i3/config` ni genera backups redundantes cuando no hay cambios.

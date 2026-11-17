@@ -1,22 +1,67 @@
 #!/usr/bin/env bash
 
+OPTIONAL_DEPS=(
+  rofi
+  picom
+  xrandr
+  feh
+  xborder-git
+  i3-layouts
+  wallutils
+  python
+  nextcloud
+  kwallet-pam
+  polybar-themes-git
+  themix-full-git
+  mpd
+  wal
+  sddm
+  mousepad
+  thunar
+  thunar-archive-plugin
+)
+
+package_installed() {
+  local pkg="$1"
+
+  if command_exists pacman; then
+    pacman -Qq "$pkg" >/dev/null 2>&1
+  elif command_exists yay; then
+    yay -Qq "$pkg" >/dev/null 2>&1
+  elif command_exists paru; then
+    paru -Qq "$pkg" >/dev/null 2>&1
+  else
+    return 1
+  fi
+}
+
 dependency_available() {
   local dep="$1"
 
   case "$dep" in
-    polybar-themes-git|themix-full-git|thunar-archive-plugin)
-      if command_exists yay; then
-        yay -Qq "$dep" >/dev/null 2>&1
-      elif command_exists paru; then
-        paru -Qq "$dep" >/dev/null 2>&1
-      elif command_exists pacman; then
-        pacman -Qq "$dep" >/dev/null 2>&1
-      else
-        return 1
-      fi
+    polybar-themes-git|themix-full-git|thunar-archive-plugin|kwallet-pam|pixie-sddm-git)
+      package_installed "$dep"
+      ;;
+    xborder-git|xborders)
+      command_exists xborders || package_installed xborder-git
+      ;;
+    wallutils|setwallpaper)
+      command_exists setwallpaper || package_installed wallutils
+      ;;
+    wal|pywal|python-pywal)
+      command_exists wal || package_installed python-pywal || package_installed pywal
+      ;;
+    i3-layouts)
+      command_exists i3-layouts || package_installed i3-layouts
+      ;;
+    nextcloud|nextcloud-client)
+      command_exists nextcloud || package_installed nextcloud-client
+      ;;
+    python|python3)
+      command_exists python || command_exists python3 || package_installed python
       ;;
     *)
-      command_exists "$dep"
+      command_exists "$dep" || package_installed "$dep"
       ;;
   esac
 }
@@ -56,6 +101,13 @@ ask_missing_dependency_action() {
 
   printf '\n' >&2
   print_missing_dependencies "${missing[@]}"
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    dry "Modo --dry-run: se simula la opcion 1 (intentar instalar faltantes)."
+    echo "1"
+    return 0
+  fi
+
   printf 'Elige una acción para las dependencias faltantes:\n' >&2
   printf '  1) Intentar instalar faltantes\n' >&2
   printf '  2) Continuar sin instalar\n' >&2
@@ -126,13 +178,14 @@ install_missing_dependencies() {
       rofi) packages+=(rofi) ;;
       picom) packages+=(picom) ;;
       xrandr) packages+=(xorg-xrandr) ;;
-      xborders) packages+=(xborder-git) ;;
+      feh) packages+=(feh) ;;
+      xborders|xborder-git) packages+=(xborder-git) ;;
       i3-layouts) packages+=(i3-layouts) ;;
-      setwallpaper) packages+=(wallutils) ;;
-      nextcloud) packages+=(nextcloud-client) ;;
+      setwallpaper|wallutils) packages+=(wallutils) ;;
+      nextcloud|nextcloud-client) packages+=(nextcloud-client) ;;
       kwallet-pam) packages+=(kwallet-pam) ;;
-      python) packages+=(python) ;;
-      wal) packages+=(pywal) ;;
+      python|python3) packages+=(python) ;;
+      wal|pywal|python-pywal) packages+=(python-pywal) ;;
       *) packages+=("$cmd") ;;
     esac
   done
@@ -149,14 +202,22 @@ install_missing_dependencies() {
 
   local aur_packages=()
   local official_packages=()
+  local has_sync_db=0
+  if [[ $has_pacman -eq 1 ]] && compgen -G "/var/lib/pacman/sync/*.db" >/dev/null 2>&1; then
+    has_sync_db=1
+  fi
 
   for pkg in "${unique_packages[@]}"; do
     case "$pkg" in
-      polybar-themes-git|pixie-sddm-git|themix-full-git)
+      polybar-themes-git|pixie-sddm-git|themix-full-git|xborder-git|i3-layouts|python-pywal)
         aur_packages+=("$pkg")
         ;;
       *)
-        official_packages+=("$pkg")
+        if [[ $has_sync_db -eq 1 ]] && ! pacman -Si "$pkg" >/dev/null 2>&1; then
+          aur_packages+=("$pkg")
+        else
+          official_packages+=("$pkg")
+        fi
         ;;
     esac
   done

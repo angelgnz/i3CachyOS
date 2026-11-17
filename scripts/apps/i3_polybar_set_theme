@@ -12,11 +12,13 @@ usage() {
   cat <<'EOF'
 Uso:
   i3_polybar_set_theme <tema> [panel_variant]
+  i3_polybar_set_theme --current
 
 Ejemplos:
   i3_polybar_set_theme cuts
   i3_polybar_set_theme hack
   i3_polybar_set_theme panels --gnome
+  i3_polybar_set_theme --current
 
 Temas soportados:
   blocks colorblocks cuts docky forest grayblocks hack material
@@ -50,6 +52,34 @@ is_valid_panel_variant() {
   esac
 }
 
+launch_polybar_theme() {
+  local theme="$1"
+  local panel_variant="${2:-}"
+
+  if [[ "$theme" == "panels" ]]; then
+    local panels_launcher="${POLYBAR_DIR}/panels/launch.sh"
+    if [[ ! -f "$panels_launcher" ]]; then
+      echo "[ERROR] No existe launch script para panels: $panels_launcher" >&2
+      exit 1
+    fi
+    exec bash "$panels_launcher" "$panel_variant"
+  elif [[ "$theme" == "pwidgets" ]]; then
+    local pwidgets_launcher="${POLYBAR_DIR}/pwidgets/launch.sh"
+    if [[ ! -f "$pwidgets_launcher" ]]; then
+      echo "[ERROR] No existe launch script para pwidgets: $pwidgets_launcher" >&2
+      exit 1
+    fi
+    exec bash "$pwidgets_launcher" --main
+  else
+    if [[ ! -f "$LAUNCH_SCRIPT" ]]; then
+      echo "[ERROR] No existe launch script: $LAUNCH_SCRIPT" >&2
+      echo "Revisa tu instalacion de polybar-themes." >&2
+      exit 1
+    fi
+    exec bash "$LAUNCH_SCRIPT" "--$theme"
+  fi
+}
+
 if [[ ${1:-} == "-h" || ${1:-} == "--help" || $# -eq 0 ]]; then
   usage
   exit 0
@@ -61,10 +91,34 @@ if [[ ! -d "$POLYBAR_DIR" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$LAUNCH_SCRIPT" ]]; then
-  echo "[ERROR] No existe launch script: $LAUNCH_SCRIPT" >&2
-  echo "Revisa tu instalacion de polybar-themes." >&2
-  exit 1
+if [[ "$1" == "--current" ]]; then
+  theme=""
+  if [[ -f "$CURRENT_THEME_FILE" ]]; then
+    theme="$(tr -d '[:space:]' < "$CURRENT_THEME_FILE")"
+  fi
+
+  if [[ -z "$theme" ]] || ! is_valid_theme "$theme" || [[ ! -d "${POLYBAR_DIR}/${theme}" ]]; then
+    theme="shapes"
+    printf '%s\n' "$theme" > "$CURRENT_THEME_FILE"
+  fi
+
+  if [[ ! -d "${POLYBAR_DIR}/${theme}" ]]; then
+    echo "[ERROR] No existe el directorio del tema: ${POLYBAR_DIR}/${theme}" >&2
+    exit 1
+  fi
+
+  panel_variant=""
+  if [[ "$theme" == "panels" ]]; then
+    panel_variant="--gnome"
+    if [[ -f "$CURRENT_PANEL_FILE" ]]; then
+      raw_variant="$(tr -d '[:space:]' < "$CURRENT_PANEL_FILE")"
+      if [[ -n "$raw_variant" ]] && is_valid_panel_variant "$raw_variant"; then
+        panel_variant="$raw_variant"
+      fi
+    fi
+  fi
+
+  launch_polybar_theme "$theme" "$panel_variant"
 fi
 
 theme="$1"
@@ -73,6 +127,11 @@ shift || true
 if ! is_valid_theme "$theme"; then
   echo "[ERROR] Tema no valido: $theme" >&2
   usage
+  exit 1
+fi
+
+if [[ ! -d "${POLYBAR_DIR}/${theme}" ]]; then
+  echo "[ERROR] El tema '$theme' no esta instalado en: ${POLYBAR_DIR}/${theme}" >&2
   exit 1
 fi
 
@@ -123,4 +182,4 @@ else
   echo "[WARN] El tema '$theme' no tiene scripts/pywal.sh. Se omite pywal." >&2
 fi
 
-exec bash "$LAUNCH_SCRIPT" "--$theme"
+launch_polybar_theme "$theme" "$panel_variant"

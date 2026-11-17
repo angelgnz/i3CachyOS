@@ -1,0 +1,318 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DRY_RUN="${DRY_RUN:-0}"
+PREFIX="${I3_WALLPAPER_PREFIX:-edger_lucy_neon}"
+USE_ALL=0
+TARGET=""
+
+usage() {
+  cat <<'EOF'
+Uso:
+  i3_wallpaper [directorio_o_imagen] [--prefix PREFIJO] [--all] [--dry-run]
+
+Opciones:
+  --prefix PREFIJO  Prioriza imagenes cuyo nombre inicia con PREFIJO (por defecto: edger_lucy_neon).
+  --all             Evalua todas las imagenes del directorio sin filtrar por prefijo.
+  --dry-run         Muestra la seleccion y el comando sin aplicar el fondo.
+  -h, --help        Muestra esta ayuda.
+EOF
+}
+
+while (($# > 0)); do
+  case "$1" in
+    --prefix)
+      if (($# < 2)); then
+        echo "[ERROR] --prefix requiere un valor." >&2
+        exit 1
+      fi
+      PREFIX="$2"
+      shift 2
+      ;;
+    --prefix=*)
+      PREFIX="${1#*=}"
+      shift
+      ;;
+    --all)
+      USE_ALL=1
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      echo "[ERROR] Opcion no reconocida: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+    *)
+      if [[ -z "$TARGET" ]]; then
+        TARGET="$1"
+      else
+        echo "[ERROR] Argumento inesperado: $1" >&2
+        usage >&2
+        exit 1
+      fi
+      shift
+      ;;
+  esac
+done
+
+detect_wallpaper_dir() {
+  local d1="${HOME}/Images/wallpapers"
+  local d2="${HOME}/Imágenes/wallpapers"
+
+  if [[ -d "$d1" ]]; then
+    printf '%s\n' "$d1"
+  elif [[ -d "$d2" ]]; then
+    printf '%s\n' "$d2"
+  else
+    printf '%s\n' "$d1"
+  fi
+}
+
+if [[ -z "$TARGET" ]]; then
+  TARGET="$(detect_wallpaper_dir)"
+fi
+
+if [[ ! -e "$TARGET" ]]; then
+  echo "[ERROR] No existe la ruta de wallpapers: $TARGET" >&2
+  exit 1
+fi
+
+selected=()
+
+if [[ -f "$TARGET" ]]; then
+  selected=("$TARGET")
+else
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "[ERROR] Se requiere python3 para seleccionar wallpapers por resolucion." >&2
+    exit 1
+  fi
+
+  mapfile -t selected < <(python3 - "$TARGET" "$PREFIX" "$USE_ALL" <<'PYEOF'
+import os
+import re
+import shutil
+import struct
+import subprocess
+import sys
+from pathlib import Path
+
+target_dir = Path(sys.argv[1])
+prefix = sys.argv[2]
+use_all = sys.argv[3] == '1'
+
+IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.webp'}
+
+
+def get_monitors():
+    monitors = []
+
+    if shutil.which('xrandr'):
+        try:
+            out = subprocess.check_output(
+                ['xrandr', '--listmonitors'],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+            for line in out.splitlines():
+                if re.match(r'^\s*\d+:\s+', line):
+                    m = re.search(r'(\d+)(?:/\d+)?x(\d+)(?:/\d+)?\+\d+\+\d+', line)
+                    if m:
+                        monitors.append((int(m.group(1)), int(m.group(2))))
+        except Exception:
+            pass
+
+        if not monitors:
+            try:
+                out = subprocess.check_output(
+                    ['xrandr', '--query'],
+                    text=True,
+                    stderr=subprocess.DEVNULL,
+                )
+                lines = out.splitlines()
+                idx = 0
+                while idx < len(lines):
+                    line = lines[idx]
+                    if ' connected' in line and ' disconnected' not in line:
+                        geom = re.search(r'(\d+)x(\d+)\+\d+\+\d+', line)
+                        if geom:
+                            monitors.append((int(geom.group(1)), int(geom.group(2))))
+                        else:
+                            j = idx + 1
+                            while j < len(lines) and (lines[j].startswith(' ') or lines[j].startswith('\t')):
+                                mode_m = re.match(r'^\s+(\d+)x(\d+)\b', lines[j])
+                                if mode_m:
+                                    monitors.append((int(mode_m.group(1)), int(mode_m.group(2))))
+                                    break
+                                j += 1
+                    idx += 1
+            except Exception:
+                pass
+
+    if not monitors:
+        monitors = [(1920, 1080)]
+
+    return monitors
+
+
+def read_image_size(path: Path):
+    try:
+        with path.open('rb') as f:
+            head = f.read(32)
+            if len(head) >= 24 and head.startswith(b'\x89PNG\r\n\x1a\n') and head[12:16] == b'IHDR':
+                w, h = struct.unpack('>II', head[16:24])
+                return w, h
+
+            if len(head) >= 30 and head[:4] == b'RIFF' and head[8:12] == b'WEBP':
+                chunk = head[12:16]
+                if chunk == b'VP8 ' and head[23:26] == b'\x9d\x01\x2a':
+                    w, h = struct.unpack('<HH', head[26:30])
+                    return w & 0x3FFF, h & 0x3FFF
+                if chunk == b'VP8L' and head[20:21] == b'\x2f':
+                    val = int.from_bytes(head[21:25], 'little')
+                    return (val & 0x3FFF) + 1, ((val >> 14) & 0x3FFF) + 1
+                if chunk == b'VP8X':
+                    w = int.from_bytes(head[24:27], 'little') + 1
+                    h = int.from_bytes(head[27:30], 'little') + 1
+                    return w, h
+
+            if head.startswith(b'\xff\xd8'):
+                f.seek(2)
+                sof_markers = {
+                    0xC0, 0xC1, 0xC2, 0xC3,
+                    0xC5, 0xC6, 0xC7,
+                    0xC9, 0xCA, 0xCB,
+                    0xCD, 0xCE, 0xCF,
+                }
+                while True:
+                    b = f.read(1)
+                    if not b:
+                        break
+                    if b != b'\xff':
+                        continue
+                    marker = f.read(1)
+                    while marker == b'\xff':
+                        marker = f.read(1)
+                    if not marker:
+                        break
+                    m = marker[0]
+                    if m in (0xD8, 0xD9, 0x01) or (0xD0 <= m <= 0xD7):
+                        continue
+                    if m == 0xDA:
+                        break
+                    seg_len_bytes = f.read(2)
+                    if len(seg_len_bytes) < 2:
+                        break
+                    seg_len = struct.unpack('>H', seg_len_bytes)[0]
+                    if seg_len < 2:
+                        break
+                    if m in sof_markers:
+                        sof_data = f.read(5)
+                        if len(sof_data) == 5:
+                            _, h, w = struct.unpack('>BHH', sof_data)
+                            return w, h
+                        break
+                    f.seek(seg_len - 2, os.SEEK_CUR)
+    except Exception:
+        pass
+
+    if shutil.which('identify'):
+        try:
+            out = subprocess.check_output(
+                ['identify', '-ping', '-format', '%w %h', str(path)],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+            parts = out.split()
+            if len(parts) >= 2:
+                return int(parts[0]), int(parts[1])
+        except Exception:
+            pass
+
+    return None
+
+
+all_images = sorted(
+    p for p in target_dir.iterdir()
+    if p.is_file() and p.suffix.lower() in IMAGE_EXTS
+)
+
+if not all_images:
+    sys.stderr.write(f'[ERROR] No se encontraron imagenes en: {target_dir}\n')
+    raise SystemExit(1)
+
+candidates = []
+if not use_all and prefix:
+    prefixed = [p for p in all_images if p.name.startswith(prefix)]
+    if prefixed:
+        candidates = prefixed
+
+if not candidates:
+    non_city = [p for p in all_images if p.stem.lower() != 'city']
+    candidates = non_city if non_city else all_images
+
+sized_candidates = []
+for p in candidates:
+    dims = read_image_size(p)
+    if dims and dims[0] > 0 and dims[1] > 0:
+        sized_candidates.append((p, dims[0], dims[1]))
+
+if not sized_candidates:
+    sized_candidates = [(p, 1920, 1080) for p in candidates]
+
+monitors = get_monitors()
+
+
+def score_candidate(item, mw: int, mh: int):
+    path, iw, ih = item
+    m_ratio = mw / mh
+    i_ratio = iw / ih
+    m_area = mw * mh
+    i_area = iw * ih
+    rel_ratio_diff = abs(i_ratio - m_ratio) / m_ratio
+    ratio_bucket = round(rel_ratio_diff / 0.03)
+    covers = 0 if (iw >= mw and ih >= mh) else 1
+    if covers == 0:
+        res_distance = abs(i_area - m_area)
+    else:
+        res_distance = -i_area
+    return (ratio_bucket, covers, res_distance, round(rel_ratio_diff, 6), path.name)
+
+
+for mw, mh in monitors:
+    best = min(sized_candidates, key=lambda item: score_candidate(item, mw, mh))
+    print(str(best[0]))
+PYEOF
+  )
+fi
+
+if ((${#selected[@]} == 0)); then
+  echo "[ERROR] No se pudo seleccionar ningun wallpaper." >&2
+  exit 1
+fi
+
+if command -v feh >/dev/null 2>&1; then
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    printf '[DRY-RUN] feh --no-fehbg --bg-fill' >&2
+    printf ' %q' "${selected[@]}" >&2
+    printf '\n' >&2
+    exit 0
+  fi
+  exec feh --no-fehbg --bg-fill "${selected[@]}"
+elif command -v setwallpaper >/dev/null 2>&1; then
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    printf '[DRY-RUN] setwallpaper %q --mode scale\n' "${selected[-1]}" >&2
+    exit 0
+  fi
+  exec setwallpaper "${selected[-1]}" --mode scale
+else
+  echo "[ERROR] No se encontro 'feh' ni 'setwallpaper' para aplicar el fondo." >&2
+  exit 1
+fi

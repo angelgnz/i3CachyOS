@@ -16,6 +16,22 @@ EndSection
     return 1
   fi
 
+  local tmp
+  tmp="$(mktemp)"
+  printf '%s' "$desired_content" > "$tmp"
+
+  if [[ -e "$target_file" ]]; then
+    if [[ -r "$target_file" ]] && cmp -s "$tmp" "$target_file"; then
+      rm -f "$tmp"
+      log "Touchpad natural scrolling ya estaba configurado en: $target_file"
+      return 0
+    elif [[ $DRY_RUN -ne 1 ]] && sudo cmp -s "$tmp" "$target_file"; then
+      rm -f "$tmp"
+      log "Touchpad natural scrolling ya estaba configurado en: $target_file"
+      return 0
+    fi
+  fi
+
   if [[ $DRY_RUN -eq 1 ]]; then
     dry "Se aseguraria directorio root: $target_dir"
     if [[ -e "$target_file" ]]; then
@@ -25,20 +41,12 @@ EndSection
       dry "Se crearia archivo touchpad: $target_file"
       record_new_file "$target_file"
     fi
+    rm -f "$tmp"
     return 0
   fi
 
-  local tmp
-  tmp="$(mktemp)"
-  printf '%s' "$desired_content" > "$tmp"
-
   if [[ -e "$target_file" ]]; then
     backup_root_file_once "$target_file"
-    if sudo cmp -s "$tmp" "$target_file"; then
-      rm -f "$tmp"
-      log "Touchpad natural scrolling ya estaba configurado en: $target_file"
-      return 0
-    fi
   else
     record_new_file "$target_file"
   fi

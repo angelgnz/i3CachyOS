@@ -54,20 +54,21 @@ Subcomandos:
   revert            Revierte cambios usando el ultimo backup.
 
 Opciones:
-  --skip-install   No intentar instalar dependencias faltantes.
-  --yes            Ejecutar sin preguntas interactivas (continua sin instalar faltantes).
-  --revert         Revierte los cambios usando el ultimo backup.
-  --dry-run        Simula cambios sin modificar archivos ni instalar paquetes.
+  --skip-install       No intentar instalar dependencias faltantes.
+  --yes                Ejecutar sin preguntas interactivas (continua sin instalar faltantes).
+  --revert             Revierte los cambios usando el ultimo backup.
+  --dry-run            Simula cambios sin modificar archivos ni instalar paquetes.
   --only-polybar-color Ejecuta solo el cambiador de color de Polybar (sin setup extra).
-  -h, --help       Muestra esta ayuda.
+  -h, --help           Muestra esta ayuda.
 EOF
 }
 
-if (($# > 0)) && [[ "$1" != -* ]]; then
-  COMMAND="$1"
-  shift
-fi
+log() { echo "[INFO] $*" >&2; }
+warn() { echo "[WARN] $*" >&2; }
+err() { echo "[ERROR] $*" >&2; }
+dry() { echo "[DRY-RUN] $*" >&2; }
 
+command_set=0
 while (($# > 0)); do
   case "$1" in
     --skip-install)
@@ -94,19 +95,35 @@ while (($# > 0)); do
       usage
       exit 0
       ;;
+    --)
+      shift
+      while (($# > 0)); do
+        if [[ $command_set -eq 0 ]]; then
+          COMMAND="$1"
+          command_set=1
+        else
+          SUBCOMMAND_ARGS+=("$1")
+        fi
+        shift
+      done
+      break
+      ;;
+    -*)
+      err "Opcion no reconocida: $1"
+      usage >&2
+      exit 1
+      ;;
     *)
-      SUBCOMMAND_ARGS+=("$1")
+      if [[ $command_set -eq 0 ]]; then
+        COMMAND="$1"
+        command_set=1
+      else
+        SUBCOMMAND_ARGS+=("$1")
+      fi
       shift
       ;;
   esac
 done
-
-log() { echo "[INFO] $*"; }
-warn() { echo "[WARN] $*" >&2; }
-err() { echo "[ERROR] $*" >&2; }
-dry() { echo "[DRY-RUN] $*" >&2; }
-
-mkdir -p "$BACKUP_ROOT"
 
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_DIR="${BACKUP_ROOT}/${TIMESTAMP}"
@@ -135,7 +152,7 @@ record_new_file() {
 
   ensure_backup_session
   local target="$1"
-  if ! grep -Fq "NEW|${target}" "$MANIFEST" 2>/dev/null; then
+  if ! grep -Fxq "NEW|${target}" "$MANIFEST" 2>/dev/null; then
     printf 'NEW|%s\n' "$target" >> "$MANIFEST"
   fi
 }
@@ -153,7 +170,7 @@ backup_file_once() {
 
   ensure_backup_session
 
-  if grep -Fq "FILE|${target}|" "$MANIFEST" 2>/dev/null; then
+  if grep -Fxq "NEW|${target}" "$MANIFEST" 2>/dev/null; then
     return 0
   fi
 
@@ -161,8 +178,44 @@ backup_file_once() {
   safe_name="$(echo "$target" | sed 's#^/#root/#; s#/#__#g')"
   local backup_path="${BACKUP_DIR}/${safe_name}"
 
+  if grep -Fxq "FILE|${target}|${backup_path}" "$MANIFEST" 2>/dev/null; then
+    return 0
+  fi
+
   cp -a "$target" "$backup_path"
   printf 'FILE|%s|%s\n' "$target" "$backup_path" >> "$MANIFEST"
+}
+
+backup_root_file_once() {
+  local target="$1"
+  if [[ ! -e "$target" ]]; then
+    return 0
+  fi
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    dry "Se respaldaria archivo root: $target"
+    return 0
+  fi
+
+  ensure_backup_session
+
+  if grep -Fxq "NEW|${target}" "$MANIFEST" 2>/dev/null; then
+    return 0
+  fi
+
+  local safe_name
+  safe_name="$(echo "$target" | sed 's#^/#root/#; s#/#__#g')"
+  local backup_path="${BACKUP_DIR}/${safe_name}"
+
+  if grep -Fxq "FILE|${target}|${backup_path}" "$MANIFEST" 2>/dev/null; then
+    return 0
+  fi
+
+  if sudo cp -a "$target" "$backup_path"; then
+    printf 'FILE|%s|%s\n' "$target" "$backup_path" >> "$MANIFEST"
+  else
+    warn "No se pudo respaldar archivo root: $target"
+  fi
 }
 
 finalize_backup_manifest() {
@@ -175,6 +228,46 @@ finalize_backup_manifest() {
     ln -sfn "$MANIFEST" "$LATEST_MANIFEST_LINK"
     log "Backup creado en: $BACKUP_DIR"
   fi
+}
+
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+ensure_sudo_session() {
+  if [[ $DRY_RUN -eq 1 ]]; then
+    dry "Se validaria sesion sudo con sudo -v"
+    return 0
+  fi
+
+  if [[ $SUDO_AUTH_READY -eq 1 ]]; then
+    return 0
+  fi
+
+  log "Se solicitaran privilegios sudo para aplicar cambios de sistema."
+  if ! sudo -v; then
+    err "No se pudo autenticar con sudo."
+    return 1
+  fi
+
+  SUDO_AUTH_READY=1
+  return 0
+}
+
+path_needs_sudo() {
+  local target="$1"
+  local parent
+  parent="$(dirname "$target")"
+
+  while [[ ! -e "$parent" && "$parent" != "/" && "$parent" != "." ]]; do
+    parent="$(dirname "$parent")"
+  done
+
+  if [[ ( -e "$target" && ! -w "$target" ) || ! -w "$parent" ]]; then
+    return 0
+  fi
+
+  return 1
 }
 
 restore_latest_backup() {
@@ -207,13 +300,23 @@ restore_from_manifest() {
   while IFS='|' read -r kind p1 p2; do
     case "$kind" in
       FILE)
-        if [[ -f "$p2" || -d "$p2" ]]; then
+        if [[ -e "$p2" ]]; then
           if [[ $DRY_RUN -eq 1 ]]; then
             dry "Se restauraria: $p1"
           else
-            mkdir -p "$(dirname "$p1")"
-            rm -rf "$p1"
-            cp -a "$p2" "$p1"
+            if path_needs_sudo "$p1"; then
+              if ! ensure_sudo_session; then
+                err "Se requieren privilegios sudo para restaurar: $p1"
+                return 1
+              fi
+              sudo mkdir -p "$(dirname "$p1")"
+              sudo rm -rf "$p1"
+              sudo cp -a "$p2" "$p1"
+            else
+              mkdir -p "$(dirname "$p1")"
+              rm -rf "$p1"
+              cp -a "$p2" "$p1"
+            fi
             log "Restaurado: $p1"
           fi
         else
@@ -225,7 +328,15 @@ restore_from_manifest() {
           if [[ $DRY_RUN -eq 1 ]]; then
             dry "Se eliminaria (creado por script): $p1"
           else
-            rm -rf "$p1"
+            if path_needs_sudo "$p1"; then
+              if ! ensure_sudo_session; then
+                err "Se requieren privilegios sudo para eliminar: $p1"
+                return 1
+              fi
+              sudo rm -rf "$p1"
+            else
+              rm -rf "$p1"
+            fi
             log "Eliminado (creado por script): $p1"
           fi
         fi
@@ -303,314 +414,13 @@ command_backup_restore() {
   restore_from_manifest "$manifest_path"
 }
 
-if [[ $REVERT -eq 1 || "$COMMAND" == "revert" ]]; then
-  restore_latest_backup
-  exit 0
-fi
-
-command_exists() {
-  command -v "$1" >/dev/null 2>&1
-}
-
-ensure_sudo_session() {
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se validaria sesion sudo con sudo -v"
-    return 0
-  fi
-
-  if [[ $SUDO_AUTH_READY -eq 1 ]]; then
-    return 0
-  fi
-
-  log "Se solicitaran privilegios sudo para configurar display manager."
-  if ! sudo -v; then
-    err "No se pudo autenticar con sudo."
-    return 1
-  fi
-
-  SUDO_AUTH_READY=1
-  return 0
-}
-
-disable_conflicting_display_managers() {
-  local target_service="${1:-sddm.service}"
-  local known_dm_services=(
-    ly.service
-    sddm.service
-    lightdm.service
-    gdm.service
-    lxdm.service
-    xdm.service
-  )
-  local svc
-  local enabled=0
-  local active=0
-
-  for svc in "${known_dm_services[@]}"; do
-    if [[ "$svc" == "$target_service" ]]; then
-      continue
-    fi
-
-    if sudo systemctl is-enabled "$svc" >/dev/null 2>&1; then
-      enabled=1
-    else
-      enabled=0
-    fi
-
-    if sudo systemctl is-active "$svc" >/dev/null 2>&1; then
-      active=1
-    else
-      active=0
-    fi
-
-    if [[ $enabled -eq 1 || $active -eq 1 ]]; then
-      log "Desactivando display manager en conflicto: $svc"
-      if ! sudo systemctl disable --now "$svc"; then
-        warn "No se pudo desactivar completamente: $svc"
-      fi
-    fi
-  done
-}
-
-backup_root_file_once() {
-  local target="$1"
-  if [[ ! -e "$target" ]]; then
-    return 0
-  fi
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se respaldaria archivo root: $target"
-    return 0
-  fi
-
-  ensure_backup_session
-
-  if grep -Fq "FILE|${target}|" "$MANIFEST" 2>/dev/null; then
-    return 0
-  fi
-
-  local safe_name
-  safe_name="$(echo "$target" | sed 's#^/#root/#; s#/#__#g')"
-  local backup_path="${BACKUP_DIR}/${safe_name}"
-
-  if sudo cp -a "$target" "$backup_path"; then
-    printf 'FILE|%s|%s\n' "$target" "$backup_path" >> "$MANIFEST"
-  else
-    warn "No se pudo respaldar archivo root: $target"
-  fi
-}
-
-ensure_sddm_theme_config() {
-  local target="/etc/sddm.conf"
-  local tmp
-  tmp="$(mktemp)"
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    if [[ -e "$target" ]]; then
-      dry "Se estableceria tema SDDM en: $target"
-      backup_root_file_once "$target"
-    else
-      dry "Se crearia archivo SDDM: $target"
-      record_new_file "$target"
-    fi
-    rm -f "$tmp"
-    return 0
-  fi
-
-  if [[ -e "$target" ]]; then
-    backup_root_file_once "$target"
-    awk '
-      BEGIN { in_theme=0; theme_found=0; current_written=0 }
-      function ensure_current() {
-        if (theme_found && !current_written) {
-          print "Current=pixie"
-          current_written=1
-        }
-      }
-      /^\[Theme\][[:space:]]*$/ {
-        if (in_theme) {
-          ensure_current()
-        }
-        in_theme=1
-        theme_found=1
-        current_written=0
-        print
-        next
-      }
-      in_theme && /^\[/ {
-        ensure_current()
-        in_theme=0
-      }
-      in_theme && /^[[:space:]]*Current[[:space:]]*=/ {
-        print "Current=pixie"
-        current_written=1
-        next
-      }
-      { print }
-      END {
-        if (in_theme) {
-          ensure_current()
-        }
-        if (!theme_found) {
-          print ""
-          print "[Theme]"
-          print "Current=pixie"
-        }
-      }
-    ' "$target" > "$tmp"
-  else
-    record_new_file "$target"
-    cat > "$tmp" <<'EOF'
-[Theme]
-Current=pixie
-EOF
-  fi
-
-  if sudo install -Dm644 "$tmp" "$target"; then
-    log "Tema SDDM configurado: pixie"
-  else
-    warn "No se pudo configurar el tema SDDM en: $target"
-  fi
-
-  rm -f "$tmp"
-}
-
-replace_pixie_background() {
-  local pixie_dir="/usr/share/sddm/themes/pixie"
-  local pixie_assets_dir="${pixie_dir}/assets"
-  local pixie_background="${pixie_assets_dir}/background.jpg"
-  local pixie_avatar="${pixie_assets_dir}/avatar.jpg"
-  local city_source="${REPO_ROOT}/wallpapers/city.jpg"
-  local avatar_repo_dir="${REPO_ROOT}/avatar"
-  local avatar_source=""
-  local candidate
-
-  if [[ ! -d "$pixie_assets_dir" ]]; then
-    warn "No existe tema Pixie en: $pixie_assets_dir"
-    return 0
-  fi
-
-  if [[ ! -f "$city_source" ]]; then
-    warn "No se encontro city.jpg en el repo: $city_source"
-    return 0
-  fi
-
-  if [[ -d "$avatar_repo_dir" ]]; then
-    shopt -s nullglob
-    for candidate in "$avatar_repo_dir"/*; do
-      case "${candidate,,}" in
-        *.jpg|*.jpeg|*.png|*.webp)
-          avatar_source="$candidate"
-          break
-          ;;
-      esac
-    done
-    shopt -u nullglob
-  fi
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se reemplazaria fondo Pixie: $pixie_background con $city_source"
-    if [[ -e "$pixie_background" ]]; then
-      backup_root_file_once "$pixie_background"
-    else
-      record_new_file "$pixie_background"
-    fi
-    return 0
-  fi
-
-  if [[ -e "$pixie_background" ]]; then
-    backup_root_file_once "$pixie_background"
-    if sudo cmp -s "$city_source" "$pixie_background"; then
-      log "Fondo Pixie ya estaba actualizado: $pixie_background"
-      return 0
-    fi
-  else
-    record_new_file "$pixie_background"
-  fi
-
-  if sudo install -Dm644 "$city_source" "$pixie_background"; then
-    log "Fondo Pixie actualizado: $pixie_background"
-  else
-    warn "No se pudo actualizar fondo Pixie: $pixie_background"
-  fi
-
-  if [[ -z "$avatar_source" ]]; then
-    log "No se encontro imagen en ${avatar_repo_dir}; se mantiene avatar actual de Pixie."
-    return 0
-  fi
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se reemplazaria avatar Pixie: $pixie_avatar con $avatar_source"
-    if [[ -e "$pixie_avatar" ]]; then
-      backup_root_file_once "$pixie_avatar"
-    else
-      record_new_file "$pixie_avatar"
-    fi
-    return 0
-  fi
-
-  if [[ -e "$pixie_avatar" ]]; then
-    backup_root_file_once "$pixie_avatar"
-    if sudo cmp -s "$avatar_source" "$pixie_avatar"; then
-      log "Avatar Pixie ya estaba actualizado: $pixie_avatar"
-      return 0
-    fi
-  else
-    record_new_file "$pixie_avatar"
-  fi
-
-  if sudo install -Dm644 "$avatar_source" "$pixie_avatar"; then
-    log "Avatar Pixie actualizado: $pixie_avatar"
-  else
-    warn "No se pudo actualizar avatar Pixie: $pixie_avatar"
-  fi
-}
-
-command_display_manager() {
-  local target_dm_pkg="sddm"
-  local target_dm_service="sddm.service"
-
-  if ! ensure_sudo_session; then
-    return 1
-  fi
-
-  if [[ $SKIP_INSTALL -eq 1 ]]; then
-    warn "Se omite instalación de $target_dm_pkg por --skip-install"
-  else
-    if ! install_missing_dependencies "$target_dm_pkg"; then
-      err "No se pudo instalar $target_dm_pkg."
-      return 1
-    fi
-    log "Instalando tema SDDM: pixie-sddm-git"
-    if ! install_missing_dependencies "pixie-sddm-git"; then
-      warn "No se pudo instalar pixie-sddm-git. Continuando sin tema SDDM."
-    fi
-  fi
-
-  replace_pixie_background
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se deshabilitarian display managers en conflicto y se habilitaria $target_dm_service"
-    dry "Se instalarian: $target_dm_pkg pixie-sddm-git"
-    return 0
-  fi
-
-  disable_conflicting_display_managers "$target_dm_service"
-
-  log "Habilitando display manager objetivo: $target_dm_service"
-  if ! sudo systemctl enable "$target_dm_service"; then
-    err "No se pudo habilitar $target_dm_service"
-    return 1
-  fi
-
-  log "Display manager configurado: $target_dm_service"
-}
-
 # Modulos extraidos por dominio.
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/modules/dependencies.sh"
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/modules/colorscheme.sh"
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/modules/display_manager.sh"
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/modules/screenlayout.sh"
 # shellcheck source=/dev/null
@@ -628,40 +438,63 @@ safe_write_file() {
   local target="$1"
   local content="$2"
 
+  if [[ -f "$target" ]] && printf '%s' "$content" | cmp -s - "$target"; then
+    return 0
+  fi
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    if [[ -e "$target" ]]; then
+      dry "Se actualizaria archivo: $target"
+    else
+      dry "Se crearia archivo: $target"
+    fi
+    return 0
+  fi
+
   if [[ -e "$target" ]]; then
     backup_file_once "$target"
   else
     record_new_file "$target"
-    if [[ $DRY_RUN -ne 1 ]]; then
-      mkdir -p "$(dirname "$target")"
-    fi
-  fi
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se escribiria archivo: $target"
-    return 0
+    mkdir -p "$(dirname "$target")"
   fi
 
   printf '%s' "$content" > "$target"
 }
 
-replace_or_append_line() {
+render_without_managed_block() {
   local file="$1"
-  local match_regex="$2"
-  local replacement="$3"
 
-  local tmp
-  tmp="$(mktemp)"
-  if [[ -f "$file" ]] && grep -Eq "$match_regex" "$file"; then
-    sed -E "s|$match_regex|$replacement|" "$file" > "$tmp"
-  else
-    cat "$file" > "$tmp"
-    printf '\n%s\n' "$replacement" >> "$tmp"
-  fi
-
-  backup_file_once "$file"
-  cat "$tmp" > "$file"
-  rm -f "$tmp"
+  awk -v begin="$MANAGED_BEGIN" -v end="$MANAGED_END" '
+    $0 == begin {
+      inblock = 1
+      skip_trailing_blank = (n > 0 && lines[n] ~ /^[[:space:]]*$/)
+      next
+    }
+    $0 == end {
+      inblock = 0
+      just_closed = 1
+      next
+    }
+    !inblock {
+      if (just_closed) {
+        just_closed = 0
+        if (skip_trailing_blank && $0 ~ /^[[:space:]]*$/) {
+          skip_trailing_blank = 0
+          next
+        }
+        skip_trailing_blank = 0
+      }
+      lines[++n] = $0
+    }
+    END {
+      while (n > 0 && lines[n] ~ /^[[:space:]]*$/) {
+        n--
+      }
+      for (i = 1; i <= n; i++) {
+        print lines[i]
+      }
+    }
+  ' "$file"
 }
 
 remove_managed_block() {
@@ -673,36 +506,58 @@ remove_managed_block() {
 
   local tmp
   tmp="$(mktemp)"
+  render_without_managed_block "$file" > "$tmp"
 
-  awk -v begin="$MANAGED_BEGIN" -v end="$MANAGED_END" '
-    $0 == begin {inblock=1; next}
-    $0 == end {inblock=0; next}
-    !inblock {print}
-  ' "$file" > "$tmp"
-
-  backup_file_once "$file"
-  cat "$tmp" > "$file"
+  if ! cmp -s "$file" "$tmp"; then
+    backup_file_once "$file"
+    cat "$tmp" > "$file"
+  fi
   rm -f "$tmp"
 }
 
 append_managed_block() {
   local file="$1"
   local block="$2"
+  local mode="${3:-}"
 
-  remove_managed_block "$file"
-
-  if [[ $DRY_RUN -eq 1 ]]; then
+  if [[ "$mode" != "no-backup" && $DRY_RUN -eq 1 ]]; then
+    dry "Se limpiaria bloque gestionado en: $file"
     dry "Se agregaria bloque gestionado en: $file"
     return 0
   fi
 
+  local tmp
+  tmp="$(mktemp)"
+  render_without_managed_block "$file" > "$tmp"
+
   {
-    echo
+    if [[ -s "$tmp" ]]; then
+      echo
+    fi
     echo "$MANAGED_BEGIN"
-    echo "$block"
+    printf '%s\n' "$block"
     echo "$MANAGED_END"
-    echo
-  } >> "$file"
+  } >> "$tmp"
+
+  if [[ "$mode" == "no-backup" ]]; then
+    cat "$tmp" > "$file"
+  elif ! cmp -s "$file" "$tmp"; then
+    backup_file_once "$file"
+    cat "$tmp" > "$file"
+  fi
+
+  rm -f "$tmp"
+}
+
+default_i3_config_content() {
+  cat <<'EOF'
+set $mod Mod4
+font pango:Hack 9
+floating_modifier $mod
+
+set $term alacritty
+bindsym $mod+Return exec $term
+EOF
 }
 
 ensure_i3_config_exists() {
@@ -717,15 +572,7 @@ ensure_i3_config_exists() {
 
   mkdir -p "$I3_DIR"
   record_new_file "$I3_CONFIG"
-
-  cat > "$I3_CONFIG" <<'EOF'
-set $mod Mod4
-font pango:Hack 9
-floating_modifier $mod
-
-set $term alacritty
-bindsym $mod+Return exec $term
-EOF
+  default_i3_config_content > "$I3_CONFIG"
 
   log "Creado config base de i3: $I3_CONFIG"
 }
@@ -742,14 +589,12 @@ command_setup() {
 
   ensure_i3_config_exists
 
-  if [[ ! -f "$I3_CONFIG" ]]; then
+  if [[ $DRY_RUN -ne 1 && ! -f "$I3_CONFIG" ]]; then
     err "No existe i3 config en: $I3_CONFIG"
-    err "Sin archivo real no se puede simular cambios de contenido."
     exit 1
   fi
 
   local required_cmds=(sed awk grep cp chmod mkdir)
-  local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git themix-full-git mpd wal sddm mousepad thunar thunar-archive-plugin)
   local missing=()
   local c
 
@@ -760,7 +605,7 @@ command_setup() {
     fi
   done
 
-  mapfile -t missing < <(collect_missing_dependencies "${optional_cmds[@]}")
+  mapfile -t missing < <(collect_missing_dependencies "${OPTIONAL_DEPS[@]}")
 
   if ((${#missing[@]} > 0)); then
     if [[ $SKIP_INSTALL -eq 1 ]]; then
@@ -810,10 +655,9 @@ command_setup() {
 }
 
 command_deps_check() {
-  local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git themix-full-git mpd wal sddm mousepad thunar thunar-archive-plugin)
   local missing=()
 
-  mapfile -t missing < <(collect_missing_dependencies "${optional_cmds[@]}")
+  mapfile -t missing < <(collect_missing_dependencies "${OPTIONAL_DEPS[@]}")
 
   if ((${#missing[@]} == 0)); then
     log "No faltan dependencias opcionales."
@@ -835,8 +679,7 @@ command_deps_install() {
   if ((${#SUBCOMMAND_ARGS[@]} > 0)); then
     targets=("${SUBCOMMAND_ARGS[@]}")
   else
-    local optional_cmds=(rofi picom xrandr xborder-git i3-layouts wallutils python nextcloud kwallet-pam polybar-themes-git themix-full-git mpd wal sddm mousepad thunar thunar-archive-plugin)
-    mapfile -t targets < <(collect_missing_dependencies "${optional_cmds[@]}")
+    mapfile -t targets < <(collect_missing_dependencies "${OPTIONAL_DEPS[@]}")
   fi
 
   if ((${#targets[@]} == 0)); then
@@ -949,13 +792,20 @@ dispatch_command() {
     backup-restore)
       command_backup_restore
       ;;
+    revert)
+      restore_latest_backup
+      ;;
     *)
       err "Subcomando no reconocido: $COMMAND"
-      usage
+      usage >&2
       return 1
       ;;
   esac
 }
+
+if [[ $REVERT -eq 1 ]]; then
+  COMMAND="revert"
+fi
 
 dispatch_command
 

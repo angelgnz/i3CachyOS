@@ -1,16 +1,142 @@
 #!/usr/bin/env bash
 
-update_picom_corner_radius() {
-  local candidate=""
+_find_picom_conf() {
   local path
   for path in "$I3_DIR/picom.conf" "$HOME/.config/picom/picom.conf"; do
     if [[ -f "$path" ]]; then
-      candidate="$path"
-      break
+      printf '%s\n' "$path"
+      return 0
     fi
   done
+  return 1
+}
 
-  if [[ -z "$candidate" ]]; then
+_ensure_picom_list_entries() {
+  local candidate="$1"
+  local setting_key="$2"
+  shift 2
+  local entries=("$@")
+
+  local tmp
+  tmp="$(mktemp)"
+
+  python3 - "$candidate" "$tmp" "$setting_key" "${entries[@]}" <<'PYEOF'
+import re
+import sys
+
+src = sys.argv[1]
+dst = sys.argv[2]
+setting_key = sys.argv[3]
+desired_entries = sys.argv[4:]
+
+
+def split_code_and_comment(line: str):
+    in_single = False
+    in_double = False
+    escaped = False
+    for idx, ch in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if ch == '\\':
+            escaped = True
+            continue
+        if ch == "'" and not in_double:
+            in_single = not in_single
+        elif ch == '"' and not in_single:
+            in_double = not in_double
+        elif ch == '#' and not in_single and not in_double:
+            return line[:idx], line[idx:]
+    return line, ''
+
+
+with open(src, 'r', encoding='utf-8') as handle:
+    content = handle.read()
+
+pattern = re.compile(
+    r'(?m)^([ \t]*' + re.escape(setting_key) + r'\s*=\s*\[)(.*?)(\])',
+    re.DOTALL,
+)
+match = pattern.search(content)
+
+if not match:
+    block = f'{setting_key} = [\n' + ',\n'.join(desired_entries) + '\n];\n'
+    if content and not content.endswith('\n'):
+        content += '\n'
+    content += ('\n' if content else '') + block
+    with open(dst, 'w', encoding='utf-8') as handle:
+        handle.write(content)
+    raise SystemExit(0)
+
+header, body, footer = match.groups()
+lines = body.splitlines()
+
+while lines and not lines[0].strip():
+    lines.pop(0)
+while lines and not lines[-1].strip():
+    lines.pop()
+
+existing_entries = set()
+last_active_idx = None
+for idx, line in enumerate(lines):
+    code, _ = split_code_and_comment(line)
+    normalized = code.strip().rstrip(',')
+    if normalized:
+        existing_entries.add(normalized)
+        last_active_idx = idx
+
+missing_entries = [
+    entry for entry in desired_entries
+    if entry.strip().rstrip(',') not in existing_entries
+]
+
+if not missing_entries:
+    with open(dst, 'w', encoding='utf-8') as handle:
+        handle.write(content)
+    raise SystemExit(0)
+
+if last_active_idx is not None:
+    code, comment = split_code_and_comment(lines[last_active_idx])
+    code_stripped = code.rstrip()
+    trailing_ws = code[len(code_stripped):]
+    if not code_stripped.endswith(','):
+        lines[last_active_idx] = code_stripped + ',' + trailing_ws + comment
+
+for idx, entry in enumerate(missing_entries):
+    suffix = ',' if idx < len(missing_entries) - 1 else ''
+    lines.append(entry + suffix)
+
+new_body = '\n' + '\n'.join(lines) + '\n'
+new_content = content[:match.start()] + header + new_body + footer + content[match.end():]
+
+with open(dst, 'w', encoding='utf-8') as handle:
+    handle.write(new_content)
+PYEOF
+
+  local changed=0
+  if ! cmp -s "$candidate" "$tmp"; then
+    changed=1
+  fi
+
+  if [[ $changed -eq 0 ]]; then
+    rm -f "$tmp"
+    return 1
+  fi
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    rm -f "$tmp"
+    return 0
+  fi
+
+  backup_file_once "$candidate"
+  cat "$tmp" > "$candidate"
+  rm -f "$tmp"
+  return 0
+}
+
+update_picom_corner_radius() {
+  local candidate=""
+  if ! candidate="$(_find_picom_conf)"; then
     warn "No se encontro picom.conf. Se omite corner-radius."
     return 0
   fi
@@ -47,197 +173,65 @@ update_picom_corner_radius() {
 
 update_picom_opacity_rule() {
   local candidate=""
-  local path
-  for path in "$I3_DIR/picom.conf" "$HOME/.config/picom/picom.conf"; do
-    if [[ -f "$path" ]]; then
-      candidate="$path"
-      break
-    fi
-  done
-
-  if [[ -z "$candidate" ]]; then
+  if ! candidate="$(_find_picom_conf)"; then
     warn "No se encontro picom.conf. Se omite opacity-rule."
     return 0
   fi
 
-  local tmp
-  tmp="$(mktemp)"
+  if ! command_exists python3; then
+    warn "python3 no disponible. Se omite opacity-rule."
+    return 0
+  fi
 
-  python3 - "$candidate" "$tmp" <<'PYEOF'
-import re
-import sys
+  local entries=(
+    '  "75:class_g     = '\''Thunar'\''"'
+    '  "75:class_g     = '\''Org.xfce.mousepad'\''"'
+    '  "90:class_g     = '\''code'\''"'
+  )
 
-src = sys.argv[1]
-dst = sys.argv[2]
-
-desired_entries = [
-  '  "75:class_g     = \'Thunar\'",',
-  '  "75:class_g     = \'Org.xfce.mousepad\'",',
-  '  "90:class_g     = \'code\'"',
-]
-
-with open(src, 'r', encoding='utf-8') as handle:
-    content = handle.read()
-
-pattern = re.compile(r'(opacity-rule\s*=\s*\[)(.*?)(\])', re.DOTALL)
-match = pattern.search(content)
-
-if not match:
-    block = 'opacity-rule = [\n' + '\n'.join(desired_entries) + '\n];\n'
-    if content and not content.endswith('\n'):
-        content += '\n'
-    content += '\n' + block
-    with open(dst, 'w', encoding='utf-8') as handle:
-        handle.write(content)
-    raise SystemExit(0)
-
-header, body, footer = match.groups()
-body_lines = body.splitlines()
-existing_entries = set(line.strip().rstrip(',') for line in body_lines)
-missing_entries = [entry for entry in desired_entries if entry.strip().rstrip(',') not in existing_entries]
-
-if not missing_entries:
-    with open(dst, 'w', encoding='utf-8') as handle:
-        handle.write(content)
-    raise SystemExit(0)
-
-body = body.rstrip()
-if body and not body.endswith(','):
-    body += ','
-
-for index, entry in enumerate(missing_entries):
-    body += '\n' + entry
-    if index < len(missing_entries) - 1:
-        body += ','
-
-body += '\n'
-new_content = content[:match.start()] + header + body + footer + content[match.end():]
-
-with open(dst, 'w', encoding='utf-8') as handle:
-    handle.write(new_content)
-PYEOF
-
-  if ! cmp -s "$candidate" "$tmp"; then
+  if _ensure_picom_list_entries "$candidate" "opacity-rule" "${entries[@]}"; then
     if [[ $DRY_RUN -eq 1 ]]; then
       dry "Se actualizarian las reglas de opacity-rule en: $candidate"
     else
-      backup_file_once "$candidate"
-      cat "$tmp" > "$candidate"
       log "Actualizadas reglas de opacity-rule en: $candidate"
     fi
   else
     log "opacity-rule ya estaba configurado en: $candidate"
   fi
-
-  rm -f "$tmp"
 }
 
 update_picom_blur_exclude() {
   local candidate=""
-  local path
-  for path in "$I3_DIR/picom.conf" "$HOME/.config/picom/picom.conf"; do
-    if [[ -f "$path" ]]; then
-      candidate="$path"
-      break
-    fi
-  done
-
-  if [[ -z "$candidate" ]]; then
+  if ! candidate="$(_find_picom_conf)"; then
     warn "No se encontro picom.conf. Se omite blur-background-exclude."
     return 0
   fi
 
+  if ! command_exists python3; then
+    warn "python3 no disponible. Se omite blur-background-exclude."
+    return 0
+  fi
+
   local entries=(
-    '  "role = '\''xborder'\''",'
-    '  "class_g = '\''xborder'\''",'
-    '  "name = '\''xborder'\''",'
+    '  "role = '\''xborder'\''"'
+    '  "class_g = '\''xborder'\''"'
+    '  "name = '\''xborder'\''"'
   )
 
-  local all_present=1
-  local entry
-  for entry in "${entries[@]}"; do
-    if ! grep -Fq "$entry" "$candidate"; then
-      all_present=0
-      break
+  if _ensure_picom_list_entries "$candidate" "blur-background-exclude" "${entries[@]}"; then
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se agregarian entradas xborder a blur-background-exclude en: $candidate"
+    else
+      log "Agregadas entradas xborder a blur-background-exclude en: $candidate"
     fi
-  done
-
-  if [[ $all_present -eq 1 ]]; then
-    log "blur-background-exclude xborder ya configurado en: $candidate"
-    return 0
-  fi
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    dry "Se agregarian entradas xborder a blur-background-exclude en: $candidate"
-    return 0
-  fi
-
-  local tmp
-  tmp="$(mktemp)"
-
-  python3 - "$candidate" "$tmp" <<'PYEOF'
-import re
-import sys
-
-src = sys.argv[1]
-dst = sys.argv[2]
-
-new_entries = [
-  '  "role = \'xborder\'",',
-  '  "class_g = \'xborder\'",',
-  '  "name = \'xborder\'",',
-]
-
-with open(src, 'r', encoding='utf-8') as f:
-    content = f.read()
-
-pattern = re.compile(r'(blur-background-exclude\s*=\s*\[)(.*?)(\])', re.DOTALL)
-
-
-def insert_missing(match):
-    header = match.group(1)
-    body = match.group(2)
-    footer = match.group(3)
-
-    for new_entry in new_entries:
-        key = new_entry.strip().rstrip(',')
-        if key not in body:
-            body = body.rstrip()
-            if body and not body.endswith(','):
-                body += ','
-            body += '\n' + new_entry + '\n'
-
-    return header + body + footer
-
-
-new_content = pattern.sub(insert_missing, content, count=1)
-
-with open(dst, 'w', encoding='utf-8') as f:
-    f.write(new_content)
-PYEOF
-
-  if ! cmp -s "$candidate" "$tmp"; then
-    backup_file_once "$candidate"
-    cat "$tmp" > "$candidate"
-    log "Agregadas entradas xborder a blur-background-exclude en: $candidate"
   else
     log "blur-background-exclude xborder ya estaba presente en: $candidate"
   fi
-
-  rm -f "$tmp"
 }
 
 update_picom_refresh_rate_comment() {
   local candidate=""
-  local path
-  for path in "$I3_DIR/picom.conf" "$HOME/.config/picom/picom.conf"; do
-    if [[ -f "$path" ]]; then
-      candidate="$path"
-      break
-    fi
-  done
-
-  if [[ -z "$candidate" ]]; then
+  if ! candidate="$(_find_picom_conf)"; then
     warn "No se encontro picom.conf. Se omite refresh-rate."
     return 0
   fi

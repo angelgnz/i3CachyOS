@@ -8,7 +8,7 @@ ensure_helper_scripts() {
   fi
 
   local helper
-  for helper in i3_nzxt i3_cloud_storage i3_rofi_apps i3_polybar_set_theme i3_rofi_powermenu i3_rofi_polybar_theme; do
+  for helper in i3_nzxt i3_cloud_storage i3_rofi_apps i3_polybar_set_theme i3_rofi_powermenu i3_rofi_polybar_theme i3_wallpaper; do
     local src="${SCRIPT_DIR}/apps/${helper}"
     local dst="${I3_SCRIPTS_DIR}/${helper}"
 
