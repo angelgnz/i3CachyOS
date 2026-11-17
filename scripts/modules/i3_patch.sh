@@ -105,7 +105,7 @@ command_i3_patch() {
   work_file="$(mktemp)"
 
   if [[ -f "$I3_CONFIG" ]]; then
-    cat "$I3_CONFIG" > "$work_file"
+    render_without_managed_block "$I3_CONFIG" > "$work_file"
   else
     default_i3_config_content > "$work_file"
   fi
@@ -150,6 +150,20 @@ exec --no-startup-id ${I3_SCRIPTS_DIR}/i3_cloud_storage
 "
   fi
 
+  if grep -Eq '^[[:space:]]*bindsym[[:space:]]+\$mod\+p[[:space:]]+' "$work_file"; then
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se comentaria bindsym \$mod+p en $I3_CONFIG"
+    fi
+    sed -E -i 's/^[[:space:]]*bindsym[[:space:]]+\$mod\+p[[:space:]]+/#bindsym $mod+p /' "$work_file"
+  fi
+
+  if grep -Eq '^[[:space:]]*bindsym[[:space:]]+\$mod\+Shift\+p[[:space:]]+' "$work_file"; then
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se comentaria bindsym \$mod+Shift+p en $I3_CONFIG"
+    fi
+    sed -E -i 's/^[[:space:]]*bindsym[[:space:]]+\$mod\+Shift\+p[[:space:]]+/#bindsym $mod+Shift+p /' "$work_file"
+  fi
+
   local managed_block
   managed_block="$(cat <<EOF
 # Scripts auxiliares
@@ -182,6 +196,11 @@ set \$i3l spiral to workspace 0
 
 # Configuracion de wallpaper
 exec_always --no-startup-id ${I3_SCRIPTS_DIR}/i3_wallpaper
+
+# Configuracion de Flameshot
+exec --no-startup-id flameshot
+bindsym \$mod+p exec flameshot full -c
+bindsym \$mod+Shift+p exec flameshot gui
 EOF
 )"
 

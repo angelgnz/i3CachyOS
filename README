@@ -26,7 +26,7 @@ Script de personalizacion de i3wm en CachyOS con CLI por subcomandos.
 
 ## Que hace
 
-- Detecta dependencias usadas por el flujo (`rofi`, `picom`, `xrandr`, `feh`, `xborder-git`, `i3-layouts`, `wallutils`, `python`, `nextcloud`, `kwallet-pam`, `polybar-themes-git`, `themix-full-git`, `mpd`, `wal`, `sddm`, `mousepad`, `thunar`, `thunar-archive-plugin`).
+- Detecta dependencias usadas por el flujo (`rofi`, `picom`, `xrandr`, `feh`, `xborder-git`, `i3-layouts`, `wallutils`, `python`, `nextcloud`, `kwallet-pam`, `polybar-themes-git`, `themix-full-git`, `mpd`, `wal`, `sddm`, `mousepad`, `thunar`, `thunar-archive-plugin`, `flameshot`).
 - Si faltan, permite elegir:
   - instalar,
   - continuar sin instalar,
@@ -36,11 +36,11 @@ Script de personalizacion de i3wm en CachyOS con CLI por subcomandos.
 - Inserta autostart de `i3_nzxt` e `i3_cloud_storage` en `~/.config/i3/scripts/i3_autostart` si el archivo existe (en caso contrario los lanza desde `i3/config`), y crea `~/.config/xfce4/helpers.rc` con `TerminalEmulator=alacritty` si no existe.
 - Copia todos los wallpapers de `wallpapers/` a `~/Images/wallpapers` o `~/Imágenes/wallpapers`, regenera la cache con `wal -i`, instala la plantilla de Alacritty para `pywal`, extrae bloques `[colors.*]` a `colors-base.toml` con `import` y aplica el tono Material equivalente en Polybar `shapes` (`colors-dark.sh`).
 - Configura SDDM (`sddm` y `pixie-sddm-git`), activa `[Theme] Current=pixie` en `/etc/sddm.conf`, actualiza fondo y avatar de Pixie y desactiva display managers en conflicto.
-- Detecta pantallas con `xrandr` (1 o multiples monitores) y genera o actualiza `~/.screenlayout/pantallas.sh` con la resolucion nativa, la mayor tasa de refresco disponible (`--rate`), el monitor primario de mayor area, `--off` para salidas desconectadas que sigan activas y reajuste automatico de wallpaper mediante `i3_wallpaper`.
-- Aplica cambios idempotentes en `~/.config/i3/config`: atajos (`$mod+a`, `$mod+Shift+e`, `$mod+x`, `$mod+Shift+t`), `border pixel 0`, reglas `floating enable` para Steam Settings (ingles y espanol), y el bloque gestionado (`kwalletd6`, `gsettings` dark, `pantallas.sh`, `i3_polybar_set_theme --current`, `gaps inner ${I3_GAP_SIZE}`, `xborders`, `i3-layouts` y `i3_wallpaper`).
+- Detecta pantallas con `xrandr` (1 o multiples monitores), aplica fractional scaling automatico si detecta pantalla de laptop (eDP/LVDS/DSI, configurable con `--laptop-scale`), y genera o actualiza `~/.screenlayout/pantallas.sh` con resoluciones, tasas de refresco (`--rate`), posiciones logicas, `--off` para salidas desconectadas activas y reajuste de wallpaper mediante `i3_wallpaper`.
+- Aplica cambios idempotentes en `~/.config/i3/config`: atajos (`$mod+a`, `$mod+Shift+e`, `$mod+x`, `$mod+Shift+t`, `$mod+p`, `$mod+Shift+p`), `border pixel 0`, reglas `floating enable` para Steam Settings (ingles y espanol), y el bloque gestionado (`kwalletd6`, `gsettings` dark, `pantallas.sh`, `i3_polybar_set_theme --current`, `gaps inner ${I3_GAP_SIZE}`, `xborders`, `i3-layouts`, `i3_wallpaper` y `flameshot`).
 - Ajusta `picom.conf`: `corner-radius = 12;` en `#-cr-start` / `#-cr-end`, reglas en `opacity-rule` (`Thunar`, `Org.xfce.mousepad`, `code`), entradas `xborder` en `blur-background-exclude` y comenta `refresh-rate = 0`.
 - Configura `NaturalScrolling "True"` para touchpads en `/etc/X11/xorg.conf.d/30-touchpad.conf`.
-- Agrega `[module/tray]` y reemplaza `color-switch` por `tray` en `polybar/shapes`.
+- Agrega `[module/tray]`, inicializa `~/.config/polybar/.current_theme` y reemplaza `color-switch` por `tray` en `polybar/shapes`.
 
 ## Reversibilidad
 
@@ -124,6 +124,7 @@ Opciones globales (pueden pasarse antes o despues del subcomando):
 - `--skip-install`: no intenta instalar faltantes.
 - `--yes`: no interactivo, continua sin instalar faltantes.
 - `--dry-run`: simula cambios sin tocar archivos ni instalar paquetes.
+- `--laptop-scale SCALE`: factor de escala para pantalla de laptop (ej. `1.25`, `1.33`, `1.5`, `1.0`, `auto`).
 - `--revert`: restaura el ultimo backup (equivalente a `revert`).
 - `--only-polybar-color`: ejecuta solo el cambiador de color de Polybar desde `pywal`.
 

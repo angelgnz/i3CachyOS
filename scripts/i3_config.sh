@@ -27,6 +27,7 @@ NON_INTERACTIVE=0
 REVERT=0
 DRY_RUN=0
 ONLY_POLYBAR_COLOR=0
+LAPTOP_SCALE="${LAPTOP_SCALE:-auto}"
 COMMAND="setup"
 SUBCOMMAND_ARGS=()
 
@@ -44,7 +45,7 @@ Subcomandos:
   alacritty         Aplica solo plantilla/import de pywal en Alacritty.
   colorscheme       Ejecuta flujo de wallpapers + pywal + Alacritty.
   helpers-install   Instala/actualiza scripts helper y autostart.
-  screenlayout      Genera layout multimonitor cuando aplique.
+  screenlayout      Genera layout de pantalla (con scaling de laptop si aplica).
   picom-config      Aplica solo ajustes de picom.
   touchpad-config   Configura natural scrolling en touchpad (Xorg/libinput).
   polybar-update    Aplica solo ajustes de polybar shapes.
@@ -59,6 +60,7 @@ Opciones:
   --revert             Revierte los cambios usando el ultimo backup.
   --dry-run            Simula cambios sin modificar archivos ni instalar paquetes.
   --only-polybar-color Ejecuta solo el cambiador de color de Polybar (sin setup extra).
+  --laptop-scale SCALE Escala para monitor de laptop (ej. 1.25, 1.33, 1.5, auto, 1.0).
   -h, --help           Muestra esta ayuda.
 EOF
 }
@@ -89,6 +91,19 @@ while (($# > 0)); do
       ;;
     --only-polybar-color)
       ONLY_POLYBAR_COLOR=1
+      shift
+      ;;
+    --laptop-scale)
+      if (($# < 2)); then
+        err "--laptop-scale requiere un valor."
+        usage >&2
+        exit 1
+      fi
+      LAPTOP_SCALE="$2"
+      shift 2
+      ;;
+    --laptop-scale=*)
+      LAPTOP_SCALE="${1#*=}"
       shift
       ;;
     -h|--help)
@@ -124,6 +139,8 @@ while (($# > 0)); do
       ;;
   esac
 done
+
+export LAPTOP_SCALE
 
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_DIR="${BACKUP_ROOT}/${TIMESTAMP}"
@@ -730,7 +747,7 @@ command_helpers_install() {
 
 command_screenlayout() {
   ensure_i3_config_exists
-  create_multimonitor_layout_if_needed >/dev/null
+  create_multimonitor_layout_if_needed
 }
 
 command_picom_config() {
@@ -741,6 +758,7 @@ command_picom_config() {
 }
 
 command_polybar_update() {
+  ensure_polybar_current_theme
   ensure_polybar_shapes_tray_module
   ensure_polybar_shapes_modules_right_tray
 }

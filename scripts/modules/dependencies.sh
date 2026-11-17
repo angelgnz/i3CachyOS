@@ -19,6 +19,7 @@ OPTIONAL_DEPS=(
   mousepad
   thunar
   thunar-archive-plugin
+  flameshot
 )
 
 package_installed() {
@@ -186,6 +187,7 @@ install_missing_dependencies() {
       kwallet-pam) packages+=(kwallet-pam) ;;
       python|python3) packages+=(python) ;;
       wal|pywal|python-pywal) packages+=(python-pywal) ;;
+      flameshot) packages+=(flameshot) ;;
       *) packages+=("$cmd") ;;
     esac
   done

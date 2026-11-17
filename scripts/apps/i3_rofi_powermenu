@@ -15,22 +15,63 @@ if [[ ! -d "$POLYBAR_DIR" ]]; then
   fallback
 fi
 
-theme=""
-if [[ -f "$CURRENT_THEME_FILE" ]]; then
-  theme="$(tr -d '[:space:]' < "$CURRENT_THEME_FILE")"
-fi
+detect_polybar_theme() {
+  # 1. Leer de ~/.config/polybar/.current_theme si existe y es valido
+  if [[ -f "$CURRENT_THEME_FILE" ]]; then
+    local candidate
+    candidate="$(tr -d '[:space:]' < "$CURRENT_THEME_FILE")"
+    if [[ -n "$candidate" && -d "${POLYBAR_DIR}/${candidate}" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  fi
 
-if [[ -z "$theme" ]]; then
-  for candidate in cuts hack material shades shapes blocks docky forest grayblocks colorblocks pwidgets panels; do
+  # 2. Detectar desde el proceso activo de Polybar
+  if command -v pgrep >/dev/null 2>&1; then
+    local running_theme
+    running_theme="$(pgrep -a polybar 2>/dev/null | sed -n 's/.*\/polybar\/\([^/]\+\)\/config\.ini.*/\1/p' | head -n 1 || true)"
+    if [[ -n "$running_theme" && -d "${POLYBAR_DIR}/${running_theme}" ]]; then
+      echo "$running_theme"
+      return 0
+    fi
+  fi
+
+  # 3. Detectar desde la configuracion de i3 (~/.config/i3/config)
+  local i3_config="${HOME}/.config/i3/config"
+  if [[ -f "$i3_config" ]]; then
+    local cfg_theme
+    cfg_theme="$(grep -E 'launch\.sh[[:space:]]+--[a-zA-Z0-9_-]+' "$i3_config" 2>/dev/null | sed -E 's/.*launch\.sh[[:space:]]+--([a-zA-Z0-9_-]+).*/\1/' | tail -n 1 || true)"
+    if [[ -n "$cfg_theme" && -d "${POLYBAR_DIR}/${cfg_theme}" ]]; then
+      echo "$cfg_theme"
+      return 0
+    fi
+  fi
+
+  # 4. Tema por defecto del entorno (shapes) si existe
+  if [[ -d "${POLYBAR_DIR}/shapes" ]]; then
+    echo "shapes"
+    return 0
+  fi
+
+  # 5. Fallback a cualquier otro tema instalado
+  for candidate in shapes cuts hack material shades blocks docky forest grayblocks colorblocks pwidgets panels; do
     if [[ -d "${POLYBAR_DIR}/${candidate}" ]]; then
-      theme="$candidate"
-      break
+      echo "$candidate"
+      return 0
     fi
   done
-fi
+
+  return 1
+}
+
+theme="$(detect_polybar_theme || true)"
 
 if [[ -z "$theme" ]]; then
   fallback
+fi
+
+if [[ ! -f "$CURRENT_THEME_FILE" && -d "$POLYBAR_DIR" ]]; then
+  printf '%s\n' "$theme" > "$CURRENT_THEME_FILE" 2>/dev/null || true
 fi
 
 if [[ "$theme" == "panels" ]]; then
