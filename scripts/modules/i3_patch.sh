@@ -170,8 +170,9 @@ exec --no-startup-id ${I3_SCRIPTS_DIR}/i3_cloud_storage
 exec --no-startup-id kwalletd6
 ${autostart_helpers_block}exec --no-startup-id gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
 
-# Configuracion de monitor doble
+# Configuracion de monitores (dinamica + hot-plug)
 exec --no-startup-id ${SCREENLAYOUT_FILE}
+exec_always --no-startup-id ${SCREENLAYOUT_FILE} --watch
 
 # Status Bar:
 exec_always --no-startup-id ${I3_SCRIPTS_DIR}/i3_polybar_set_theme --current

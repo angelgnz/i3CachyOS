@@ -45,7 +45,7 @@ Subcomandos:
   alacritty         Aplica solo plantilla/import de pywal en Alacritty.
   colorscheme       Ejecuta flujo de wallpapers + pywal + Alacritty.
   helpers-install   Instala/actualiza scripts helper y autostart.
-  screenlayout      Genera layout de pantalla (con scaling de laptop si aplica).
+  screenlayout      Genera y aplica layout dinamico de pantalla (con hot-plug y scaling de laptop).
   picom-config      Aplica solo ajustes de picom.
   touchpad-config   Configura natural scrolling en touchpad (Xorg/libinput).
   polybar-update    Aplica solo ajustes de polybar shapes.

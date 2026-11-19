@@ -1,5 +1,46 @@
 #!/usr/bin/env bash
 
+ensure_helper_script() {
+  local helper="$1"
+  local src="${SCRIPT_DIR}/apps/${helper}"
+  local dst="${I3_SCRIPTS_DIR}/${helper}"
+
+  if [[ ! -f "$src" ]]; then
+    warn "No existe helper en repo: $src"
+    return 0
+  fi
+
+  if [[ $DRY_RUN -ne 1 ]]; then
+    mkdir -p "$I3_SCRIPTS_DIR"
+  fi
+
+  if [[ -f "$dst" ]]; then
+    if ! cmp -s "$src" "$dst"; then
+      if [[ $DRY_RUN -eq 1 ]]; then
+        dry "Se actualizaria helper: $dst"
+      else
+        backup_file_once "$dst"
+        cp -a "$src" "$dst"
+        log "Helper actualizado: $dst"
+      fi
+    fi
+  else
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se instalaria helper: $dst"
+    else
+      record_new_file "$dst"
+      cp -a "$src" "$dst"
+      log "Helper instalado: $dst"
+    fi
+  fi
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    dry "Se aplicaria chmod +x a: $dst"
+  else
+    chmod +x "$dst"
+  fi
+}
+
 ensure_helper_scripts() {
   if [[ $DRY_RUN -eq 1 ]]; then
     dry "Se aseguraria directorio de scripts i3: $I3_SCRIPTS_DIR"
@@ -8,40 +49,8 @@ ensure_helper_scripts() {
   fi
 
   local helper
-  for helper in i3_nzxt i3_cloud_storage i3_rofi_apps i3_polybar_set_theme i3_rofi_powermenu i3_rofi_polybar_theme i3_wallpaper; do
-    local src="${SCRIPT_DIR}/apps/${helper}"
-    local dst="${I3_SCRIPTS_DIR}/${helper}"
-
-    if [[ ! -f "$src" ]]; then
-      warn "No existe helper en repo: $src"
-      continue
-    fi
-
-    if [[ -f "$dst" ]]; then
-      if ! cmp -s "$src" "$dst"; then
-        if [[ $DRY_RUN -eq 1 ]]; then
-          dry "Se actualizaria helper: $dst"
-        else
-          backup_file_once "$dst"
-          cp -a "$src" "$dst"
-          log "Helper actualizado: $dst"
-        fi
-      fi
-    else
-      if [[ $DRY_RUN -eq 1 ]]; then
-        dry "Se instalaria helper: $dst"
-      else
-        record_new_file "$dst"
-        cp -a "$src" "$dst"
-        log "Helper instalado: $dst"
-      fi
-    fi
-
-    if [[ $DRY_RUN -eq 1 ]]; then
-      dry "Se aplicaria chmod +x a: $dst"
-    else
-      chmod +x "$dst"
-    fi
+  for helper in i3_nzxt i3_cloud_storage i3_rofi_apps i3_polybar_set_theme i3_rofi_powermenu i3_rofi_polybar_theme i3_wallpaper i3_screenlayout; do
+    ensure_helper_script "$helper"
   done
 }
 

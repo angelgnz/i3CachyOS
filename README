@@ -8,7 +8,7 @@ Script de personalizacion de i3wm en CachyOS con CLI por subcomandos.
 - `scripts/modules/dependencies.sh`: funciones de deteccion/instalacion de dependencias.
 - `scripts/modules/colorscheme.sh`: funciones de wallpapers + pywal + Alacritty + traduccion de color a Polybar.
 - `scripts/modules/display_manager.sh`: instalacion/activacion de SDDM y personalizacion del tema Pixie.
-- `scripts/modules/screenlayout.sh`: generacion y verificacion de layout de pantalla (1 o multiples monitores).
+- `scripts/modules/screenlayout.sh`: instalacion de `i3_screenlayout`, generacion de wrapper dinamico `~/.screenlayout/pantallas.sh` y verificacion en `i3/config`.
 - `scripts/modules/picom.sh`: ajustes de `picom.conf`.
 - `scripts/modules/touchpad.sh`: configuracion de natural scrolling en `/etc/X11/xorg.conf.d/30-touchpad.conf`.
 - `scripts/modules/helpers.sh`: instalacion de helpers, parcheo de `i3_autostart` y configuracion de terminal XFCE.
@@ -21,6 +21,7 @@ Script de personalizacion de i3wm en CachyOS con CLI por subcomandos.
 - `scripts/apps/i3_rofi_polybar_theme`: selector interactivo en Rofi para cambiar el tema de Polybar (`$mod+Shift+t`).
 - `scripts/apps/i3_rofi_powermenu`: menu de sesion/apagado adaptado al tema activo de Polybar (`i3-nagbar` como fallback).
 - `scripts/apps/i3_wallpaper`: selecciona y aplica el mejor wallpaper por monitor segun aspect ratio y resolucion usando `feh --bg-fill` (con `setwallpaper` como fallback).
+- `scripts/apps/i3_screenlayout`: detecta pantallas conectadas (incluyendo monitores por USB-C / hubs MST), aplica configuracion `xrandr` con fallback de ancho de banda, reajusta wallpaper y Polybar, e incluye `--watch` (RandR + udev DRM) para recargar monitores automaticamente en caliente.
 - `wallpapers/`: wallpapers fuente del repositorio (se copian todos).
 - `avatar/`: imagen opcional para reemplazar `/usr/share/sddm/themes/pixie/assets/avatar.jpg`.
 
@@ -31,13 +32,13 @@ Script de personalizacion de i3wm en CachyOS con CLI por subcomandos.
   - instalar,
   - continuar sin instalar,
   - detener el script.
-- Copia los 7 helpers de `scripts/apps/` a `~/.config/i3/scripts/`:
-  - `i3_nzxt`, `i3_cloud_storage`, `i3_rofi_apps`, `i3_polybar_set_theme`, `i3_rofi_polybar_theme`, `i3_rofi_powermenu`, `i3_wallpaper`.
+- Copia los 8 helpers de `scripts/apps/` a `~/.config/i3/scripts/`:
+  - `i3_nzxt`, `i3_cloud_storage`, `i3_rofi_apps`, `i3_polybar_set_theme`, `i3_rofi_polybar_theme`, `i3_rofi_powermenu`, `i3_wallpaper`, `i3_screenlayout`.
 - Inserta autostart de `i3_nzxt` e `i3_cloud_storage` en `~/.config/i3/scripts/i3_autostart` si el archivo existe (en caso contrario los lanza desde `i3/config`), y crea `~/.config/xfce4/helpers.rc` con `TerminalEmulator=alacritty` si no existe.
 - Copia todos los wallpapers de `wallpapers/` a `~/Images/wallpapers` o `~/Imágenes/wallpapers`, regenera la cache con `wal -i`, instala la plantilla de Alacritty para `pywal`, extrae bloques `[colors.*]` a `colors-base.toml` con `import` y aplica el tono Material equivalente en Polybar `shapes` (`colors-dark.sh`).
 - Configura SDDM (`sddm` y `pixie-sddm-git`), activa `[Theme] Current=pixie` en `/etc/sddm.conf`, actualiza fondo y avatar de Pixie y desactiva display managers en conflicto.
-- Detecta pantallas con `xrandr` (1 o multiples monitores), aplica fractional scaling automatico si detecta pantalla de laptop (eDP/LVDS/DSI, configurable con `--laptop-scale`), y genera o actualiza `~/.screenlayout/pantallas.sh` con resoluciones, tasas de refresco (`--rate`), posiciones logicas, `--off` para salidas desconectadas activas y reajuste de wallpaper mediante `i3_wallpaper`.
-- Aplica cambios idempotentes en `~/.config/i3/config`: atajos (`$mod+a`, `$mod+Shift+e`, `$mod+x`, `$mod+Shift+t`, `$mod+p`, `$mod+Shift+p`), `border pixel 0`, reglas `floating enable` para Steam Settings (ingles y espanol), y el bloque gestionado (`kwalletd6`, `gsettings` dark, `pantallas.sh`, `i3_polybar_set_theme --current`, `gaps inner ${I3_GAP_SIZE}`, `xborders`, `i3-layouts`, `i3_wallpaper` y `flameshot`).
+- Instala `~/.config/i3/scripts/i3_screenlayout` y genera `~/.screenlayout/pantallas.sh` como wrapper dinamico: detecta pantallas con `xrandr` (1 o multiples monitores, incluyendo hubs USB-C / MST), aplica fractional scaling automatico en pantallas de laptop (`eDP`/`LVDS`/`DSI`, configurable con `--laptop-scale`), aplica el layout de inmediato si hay sesion X11 activa, incluye fallback automatico sin `--rate` o con `--auto` cuando un hub USB-C limita el ancho de banda, apaga salidas desconectadas activas (`--off`), reajusta wallpapers (`i3_wallpaper`) y recarga Polybar. Ademas, `i3/config` ejecuta `pantallas.sh --watch` para escuchar eventos X11 RandR y udev DRM y recargar automaticamente al conectar o desconectar monitores.
+- Aplica cambios idempotentes en `~/.config/i3/config`: atajos (`$mod+a`, `$mod+Shift+e`, `$mod+x`, `$mod+Shift+t`, `$mod+p`, `$mod+Shift+p`), `border pixel 0`, reglas `floating enable` para Steam Settings (ingles y espanol), y el bloque gestionado (`kwalletd6`, `gsettings` dark, `pantallas.sh`, `pantallas.sh --watch`, `i3_polybar_set_theme --current`, `gaps inner ${I3_GAP_SIZE}`, `xborders`, `i3-layouts`, `i3_wallpaper` y `flameshot`).
 - Ajusta `picom.conf`: `corner-radius = 12;` en `#-cr-start` / `#-cr-end`, reglas en `opacity-rule` (`Thunar`, `Org.xfce.mousepad`, `code`), entradas `xborder` en `blur-background-exclude` y comenta `refresh-rate = 0`.
 - Configura `NaturalScrolling "True"` para touchpads en `/etc/X11/xorg.conf.d/30-touchpad.conf`.
 - Agrega `[module/tray]`, inicializa `~/.config/polybar/.current_theme` y reemplaza `color-switch` por `tray` en `polybar/shapes`.
@@ -75,7 +76,7 @@ Tambien puedes ejecutar `./scripts/i3_config.sh` sin subcomando y se comporta co
 - `alacritty`: aplica solo template/import de pywal para Alacritty.
 - `colorscheme`: wallpapers + pywal + Polybar dark + Alacritty.
 - `helpers-install`: instala/actualiza helpers, `i3_autostart` y `xfce4/helpers.rc`.
-- `screenlayout`: genera o actualiza el layout de pantalla (1 o multiples monitores).
+- `screenlayout`: instala `i3_screenlayout`, genera el wrapper dinamico `~/.screenlayout/pantallas.sh` y aplica el layout inmediatamente si hay sesion X11 activa.
 - `picom-config`: aplica ajustes de picom.
 - `touchpad-config`: configura `NaturalScrolling` en `/etc/X11/xorg.conf.d/30-touchpad.conf`.
 - `polybar-update`: aplica ajustes de polybar `shapes`.
