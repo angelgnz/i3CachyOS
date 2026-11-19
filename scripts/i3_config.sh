@@ -10,8 +10,10 @@ I3_SCRIPTS_DIR="${I3_DIR}/scripts"
 I3_AUTOSTART="${I3_SCRIPTS_DIR}/i3_autostart"
 SCREENLAYOUT_DIR="$HOME/.screenlayout"
 SCREENLAYOUT_FILE="${SCREENLAYOUT_DIR}/pantallas.sh"
-POLYBAR_SHAPES_MODULES_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/polybar/shapes/modules.ini"
-POLYBAR_SHAPES_CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/polybar/shapes/config.ini"
+POLYBAR_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/polybar"
+POLYBAR_SHAPES_MODULES_FILE="${POLYBAR_DIR}/shapes/modules.ini"
+POLYBAR_SHAPES_CONFIG_FILE="${POLYBAR_DIR}/shapes/config.ini"
+POWER_SUPPLY_DIR="${POWER_SUPPLY_DIR:-/sys/class/power_supply}"
 WAL_TEMPLATES_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/wal/templates"
 WAL_ALACRITTY_TEMPLATE="${WAL_TEMPLATES_DIR}/colors-alacritty.toml"
 ALACRITTY_CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/alacritty/alacritty.toml"
@@ -48,7 +50,7 @@ Subcomandos:
   screenlayout      Genera y aplica layout dinamico de pantalla (con hot-plug y scaling de laptop).
   picom-config      Aplica solo ajustes de picom.
   touchpad-config   Configura natural scrolling en touchpad (Xorg/libinput).
-  polybar-update    Aplica solo ajustes de polybar shapes.
+  polybar-update    Aplica ajustes de Polybar (tray y bateria segun hardware).
   i3-patch          Aplica solo binds + bloque gestionado en i3 config.
   backup-list       Lista backups disponibles.
   backup-restore    Restaura backup por timestamp, manifiesto o latest.
@@ -761,6 +763,7 @@ command_polybar_update() {
   ensure_polybar_current_theme
   ensure_polybar_shapes_tray_module
   ensure_polybar_shapes_modules_right_tray
+  ensure_polybar_battery_module
 }
 
 dispatch_command() {

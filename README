@@ -12,7 +12,7 @@ Script de personalizacion de i3wm en CachyOS con CLI por subcomandos.
 - `scripts/modules/picom.sh`: ajustes de `picom.conf`.
 - `scripts/modules/touchpad.sh`: configuracion de natural scrolling en `/etc/X11/xorg.conf.d/30-touchpad.conf`.
 - `scripts/modules/helpers.sh`: instalacion de helpers, parcheo de `i3_autostart` y configuracion de terminal XFCE.
-- `scripts/modules/polybar.sh`: ajustes de polybar `shapes`.
+- `scripts/modules/polybar.sh`: ajustes de Polybar (`tray`, tema actual y modulo de bateria segun hardware en `/sys/class/power_supply`).
 - `scripts/modules/i3_patch.sh`: parcheo idempotente de `i3/config`.
 - `scripts/apps/i3_nzxt`: helper para configurar NZXT (`liquidctl`) si existe.
 - `scripts/apps/i3_cloud_storage`: helper para iniciar Overgrive/Nextcloud en segundo plano.
@@ -41,7 +41,7 @@ Script de personalizacion de i3wm en CachyOS con CLI por subcomandos.
 - Aplica cambios idempotentes en `~/.config/i3/config`: atajos (`$mod+a`, `$mod+Shift+e`, `$mod+x`, `$mod+Shift+t`, `$mod+p`, `$mod+Shift+p`), `border pixel 0`, reglas `floating enable` para Steam Settings (ingles y espanol), y el bloque gestionado (`kwalletd6`, `gsettings` dark, `pantallas.sh`, `pantallas.sh --watch`, `i3_polybar_set_theme --current`, `gaps inner ${I3_GAP_SIZE}`, `xborders`, `i3-layouts`, `i3_wallpaper` y `flameshot`).
 - Ajusta `picom.conf`: `corner-radius = 12;` en `#-cr-start` / `#-cr-end`, reglas en `opacity-rule` (`Thunar`, `Org.xfce.mousepad`, `code`), entradas `xborder` en `blur-background-exclude` y comenta `refresh-rate = 0`.
 - Configura `NaturalScrolling "True"` para touchpads en `/etc/X11/xorg.conf.d/30-touchpad.conf`.
-- Agrega `[module/tray]`, inicializa `~/.config/polybar/.current_theme` y reemplaza `color-switch` por `tray` en `polybar/shapes`.
+- Agrega `[module/tray]`, inicializa `~/.config/polybar/.current_theme` y reemplaza `color-switch` por `tray` en `polybar/shapes`. Ademas detecta bateria y adaptador AC reales en `/sys/class/power_supply` (ignorando perifericos con `scope=Device`): si hay bateria del sistema configura `battery` y `adapter` en todos los temas instalados de Polybar (`modules.ini` y `bars.ini`) y asegura `battery` en `shapes`; si no hay bateria (PC de escritorio), oculta limpiamente `battery` en los temas de Polybar (con transicion `right3_nobat` en `shapes`).
 
 ## Reversibilidad
 
@@ -79,7 +79,7 @@ Tambien puedes ejecutar `./scripts/i3_config.sh` sin subcomando y se comporta co
 - `screenlayout`: instala `i3_screenlayout`, genera el wrapper dinamico `~/.screenlayout/pantallas.sh` y aplica el layout inmediatamente si hay sesion X11 activa.
 - `picom-config`: aplica ajustes de picom.
 - `touchpad-config`: configura `NaturalScrolling` en `/etc/X11/xorg.conf.d/30-touchpad.conf`.
-- `polybar-update`: aplica ajustes de polybar `shapes`.
+- `polybar-update`: aplica ajustes de Polybar (`tray`, `.current_theme` y configuracion de bateria/adaptador segun hardware).
 - `i3-patch`: aplica binds, reglas y bloque gestionado en `i3/config`.
 - `backup-list`: lista backups guardados con timestamp.
 - `backup-restore [ID|latest|MANIFEST]`: restaura por timestamp, latest o ruta de manifiesto.
