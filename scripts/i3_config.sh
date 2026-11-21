@@ -757,6 +757,9 @@ command_picom_config() {
   update_picom_opacity_rule
   update_picom_blur_exclude
   update_picom_refresh_rate_comment
+  update_picom_unredir_if_possible
+  update_picom_xrender_sync_fence
+  update_picom_rounded_corners_exclude
 }
 
 command_polybar_update() {

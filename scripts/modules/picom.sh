@@ -261,3 +261,135 @@ update_picom_refresh_rate_comment() {
 
   rm -f "$tmp"
 }
+
+_ensure_picom_scalar_setting() {
+  local candidate="$1"
+  local setting_key="$2"
+  local setting_value="$3"
+  local desired_line="${setting_key} = ${setting_value};"
+
+  local tmp
+  tmp="$(mktemp)"
+
+  awk -v key="$setting_key" -v desired="$desired_line" '
+    BEGIN { found_active=0; found_commented=0 }
+    {
+      lines[NR] = $0
+      if (!found_active && $0 ~ "^[[:space:]]*" key "[[:space:]]*=") {
+        found_active = NR
+      } else if (!found_commented && $0 ~ "^[[:space:]]*#[[:space:]]*" key "[[:space:]]*=") {
+        found_commented = NR
+      }
+    }
+    END {
+      if (found_active > 0) {
+        for (i = 1; i <= NR; i++) {
+          if (i == found_active) {
+            print desired
+          } else {
+            print lines[i]
+          }
+        }
+      } else if (found_commented > 0) {
+        for (i = 1; i <= NR; i++) {
+          if (i == found_commented) {
+            print desired
+          } else {
+            print lines[i]
+          }
+        }
+      } else {
+        for (i = 1; i <= NR; i++) {
+          print lines[i]
+        }
+        if (NR > 0 && lines[NR] != "") {
+          print ""
+        }
+        print desired
+      }
+    }
+  ' "$candidate" > "$tmp"
+
+  local changed=0
+  if ! cmp -s "$candidate" "$tmp"; then
+    changed=1
+  fi
+
+  if [[ $changed -eq 0 ]]; then
+    rm -f "$tmp"
+    return 1
+  fi
+
+  if [[ $DRY_RUN -eq 1 ]]; then
+    rm -f "$tmp"
+    return 0
+  fi
+
+  backup_file_once "$candidate"
+  cat "$tmp" > "$candidate"
+  rm -f "$tmp"
+  return 0
+}
+
+update_picom_unredir_if_possible() {
+  local candidate=""
+  if ! candidate="$(_find_picom_conf)"; then
+    warn "No se encontro picom.conf. Se omite unredir-if-possible."
+    return 0
+  fi
+
+  if _ensure_picom_scalar_setting "$candidate" "unredir-if-possible" "false"; then
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se configuraria unredir-if-possible = false; en: $candidate"
+    else
+      log "Configurado unredir-if-possible = false; en: $candidate"
+    fi
+  else
+    log "unredir-if-possible = false ya estaba configurado en: $candidate"
+  fi
+}
+
+update_picom_xrender_sync_fence() {
+  local candidate=""
+  if ! candidate="$(_find_picom_conf)"; then
+    warn "No se encontro picom.conf. Se omite xrender-sync-fence."
+    return 0
+  fi
+
+  if _ensure_picom_scalar_setting "$candidate" "xrender-sync-fence" "true"; then
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se configuraria xrender-sync-fence = true; en: $candidate"
+    else
+      log "Configurado xrender-sync-fence = true; en: $candidate"
+    fi
+  else
+    log "xrender-sync-fence = true ya estaba configurado en: $candidate"
+  fi
+}
+
+update_picom_rounded_corners_exclude() {
+  local candidate=""
+  if ! candidate="$(_find_picom_conf)"; then
+    warn "No se encontro picom.conf. Se omite rounded-corners-exclude."
+    return 0
+  fi
+
+  if ! command_exists python3; then
+    warn "python3 no disponible. Se omite rounded-corners-exclude."
+    return 0
+  fi
+
+  local entries=(
+    '  "_NET_WM_STATE@:32a *= '\''_NET_WM_STATE_FULLSCREEN'\''"'
+  )
+
+  if _ensure_picom_list_entries "$candidate" "rounded-corners-exclude" "${entries[@]}"; then
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se agregaria exclusion fullscreen a rounded-corners-exclude en: $candidate"
+    else
+      log "Agregada exclusion fullscreen a rounded-corners-exclude en: $candidate"
+    fi
+  else
+    log "rounded-corners-exclude fullscreen ya estaba presente en: $candidate"
+  fi
+}
