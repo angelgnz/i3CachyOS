@@ -14,7 +14,6 @@ Script de personalizacion de i3wm en CachyOS con CLI por subcomandos.
 - `scripts/modules/helpers.sh`: instalacion de helpers, parcheo de `i3_autostart` y configuracion de terminal XFCE.
 - `scripts/modules/polybar.sh`: ajustes de Polybar (`tray`, tema actual y modulo de bateria segun hardware en `/sys/class/power_supply`).
 - `scripts/modules/i3_patch.sh`: parcheo idempotente de `i3/config`.
-- `scripts/apps/i3_nzxt`: helper para configurar NZXT (`liquidctl`) si existe.
 - `scripts/apps/i3_cloud_storage`: helper para iniciar Overgrive/Nextcloud en segundo plano.
 - `scripts/apps/i3_rofi_apps`: helper para abrir Rofi adaptado al tema activo de Polybar (`drun` como fallback).
 - `scripts/apps/i3_polybar_set_theme`: helper para cambiar el tema activo de Polybar o relanzar el actual con `--current`.
@@ -32,9 +31,9 @@ Script de personalizacion de i3wm en CachyOS con CLI por subcomandos.
   - instalar,
   - continuar sin instalar,
   - detener el script.
-- Copia los 8 helpers de `scripts/apps/` a `~/.config/i3/scripts/`:
-  - `i3_nzxt`, `i3_cloud_storage`, `i3_rofi_apps`, `i3_polybar_set_theme`, `i3_rofi_polybar_theme`, `i3_rofi_powermenu`, `i3_wallpaper`, `i3_screenlayout`.
-- Inserta autostart de `i3_nzxt` e `i3_cloud_storage` en `~/.config/i3/scripts/i3_autostart` si el archivo existe (en caso contrario los lanza desde `i3/config`), y crea `~/.config/xfce4/helpers.rc` con `TerminalEmulator=alacritty` si no existe.
+- Copia los 7 helpers de `scripts/apps/` a `~/.config/i3/scripts/`:
+  - `i3_cloud_storage`, `i3_rofi_apps`, `i3_polybar_set_theme`, `i3_rofi_polybar_theme`, `i3_rofi_powermenu`, `i3_wallpaper`, `i3_screenlayout`.
+- Inserta autostart de `i3_cloud_storage` en `~/.config/i3/scripts/i3_autostart` si el archivo existe (en caso contrario lo lanza desde `i3/config`), y crea `~/.config/xfce4/helpers.rc` con `TerminalEmulator=alacritty` si no existe.
 - Copia todos los wallpapers de `wallpapers/` a `~/Images/wallpapers` o `~/Imágenes/wallpapers`, regenera la cache con `wal -i`, instala la plantilla de Alacritty para `pywal`, extrae bloques `[colors.*]` a `colors-base.toml` con `import` y aplica el tono Material equivalente en Polybar `shapes` (`colors-dark.sh`).
 - Configura SDDM (`sddm` y `pixie-sddm-git`), activa `[Theme] Current=pixie` en `/etc/sddm.conf`, actualiza fondo y avatar de Pixie y desactiva display managers en conflicto.
 - Instala `~/.config/i3/scripts/i3_screenlayout` y genera `~/.screenlayout/pantallas.sh` como wrapper dinamico: detecta pantallas con `xrandr` (1 o multiples monitores, incluyendo hubs USB-C / MST), aplica fractional scaling automatico en pantallas de laptop (`eDP`/`LVDS`/`DSI`, configurable con `--laptop-scale`), aplica el layout de inmediato si hay sesion X11 activa, incluye fallback automatico sin `--rate` o con `--auto` cuando un hub USB-C limita el ancho de banda, apaga salidas desconectadas activas (`--off`), reajusta wallpapers (`i3_wallpaper`) y recarga Polybar. Ademas, `i3/config` ejecuta `pantallas.sh --watch` para escuchar eventos X11 RandR y udev DRM y recargar automaticamente al conectar o desconectar monitores.

@@ -49,9 +49,20 @@ ensure_helper_scripts() {
   fi
 
   local helper
-  for helper in i3_nzxt i3_cloud_storage i3_rofi_apps i3_polybar_set_theme i3_rofi_powermenu i3_rofi_polybar_theme i3_wallpaper i3_screenlayout; do
+  for helper in i3_cloud_storage i3_rofi_apps i3_polybar_set_theme i3_rofi_powermenu i3_rofi_polybar_theme i3_wallpaper i3_screenlayout; do
     ensure_helper_script "$helper"
   done
+
+  local legacy_nzxt="${I3_SCRIPTS_DIR}/i3_nzxt"
+  if [[ -e "$legacy_nzxt" ]]; then
+    if [[ $DRY_RUN -eq 1 ]]; then
+      dry "Se eliminaria helper obsoleto: $legacy_nzxt"
+    else
+      backup_file_once "$legacy_nzxt"
+      rm -f "$legacy_nzxt"
+      log "Eliminado helper obsoleto: $legacy_nzxt"
+    fi
+  fi
 }
 
 update_i3_autostart_if_exists() {
@@ -60,14 +71,13 @@ update_i3_autostart_if_exists() {
   fi
 
   local block='\
-# Launch NZXT
-"$idir"/scripts/i3_nzxt
-
 # Launch Cloud Storage
 "$idir"/scripts/i3_cloud_storage\
 '
 
-  if grep -Fq '"$idir"/scripts/i3_nzxt' "$I3_AUTOSTART" && grep -Fq '"$idir"/scripts/i3_cloud_storage' "$I3_AUTOSTART"; then
+  if ! grep -Fq '"$idir"/scripts/i3_nzxt' "$I3_AUTOSTART" \
+    && ! grep -Fq '# Launch NZXT' "$I3_AUTOSTART" \
+    && grep -Fq '"$idir"/scripts/i3_cloud_storage' "$I3_AUTOSTART"; then
     return 0
   fi
 

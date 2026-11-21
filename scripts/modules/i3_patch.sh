@@ -145,8 +145,7 @@ command_i3_patch() {
 
   local autostart_helpers_block=""
   if [[ ! -f "$I3_AUTOSTART" ]]; then
-    autostart_helpers_block="exec --no-startup-id ${I3_SCRIPTS_DIR}/i3_nzxt
-exec --no-startup-id ${I3_SCRIPTS_DIR}/i3_cloud_storage
+    autostart_helpers_block="exec --no-startup-id ${I3_SCRIPTS_DIR}/i3_cloud_storage
 "
   fi
 
